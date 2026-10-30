@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from transformers import AutoTokenizer, LlamaConfig
+
 from .task import DigitCompletion, generate_ground_truth_response
 from .tokenizer import CharTokenizer
-
-from transformers import AutoTokenizer, LlamaConfig
 
 AutoTokenizer.register(LlamaConfig, CharTokenizer, exist_ok=True)  # pyright: ignore[reportArgumentType]  # transformers 4.47 defines register without @staticmethod
 

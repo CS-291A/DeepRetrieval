@@ -16,8 +16,9 @@ The base class for Actor
 """
 from abc import ABC, abstractmethod
 
-from verl import DataProto
 import torch
+
+from verl import DataProto
 
 __all__ = ['BasePPOActor']
 

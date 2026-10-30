@@ -1,7 +1,6 @@
 import os
 from typing import TYPE_CHECKING, cast
 
-
 from anthropic import AnthropicBedrock  # pyright: ignore[reportPrivateImportUsage]  # anthropic re-exports it via `from .lib.bedrock import *` but omits it from __all__
 
 if TYPE_CHECKING:

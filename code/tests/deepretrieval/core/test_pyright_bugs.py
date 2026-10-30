@@ -48,7 +48,10 @@ def test_execute_rank_zero_sync_calls_only_rank_zero(monkeypatch: pytest.MonkeyP
 
 def test_qwen2_flash_attn_forward_with_output_attentions_returns_no_weights(monkeypatch: pytest.MonkeyPatch):
     from transformers import Qwen2Config
-    from transformers.models.qwen2.modeling_qwen2 import Qwen2Attention, Qwen2RotaryEmbedding
+    from transformers.models.qwen2.modeling_qwen2 import (
+        Qwen2Attention,
+        Qwen2RotaryEmbedding,
+    )
 
     from verl.models.transformers import qwen2 as verl_qwen2
 
@@ -125,7 +128,10 @@ def _cpu_memory_buffer(numel, dtype):
 
 
 def test_build_memory_reference_pads_each_param_with_its_own_dtype():
-    from verl.utils.memory_buffer import build_memory_reference_from_module, calc_padded_numel
+    from verl.utils.memory_buffer import (
+        build_memory_reference_from_module,
+        calc_padded_numel,
+    )
 
     module = torch.nn.Module()
     module.a = torch.nn.Parameter(torch.ones(3, dtype=torch.float32))
@@ -168,8 +174,8 @@ def test_precision_type_supported_types_lists_every_precision():
 
 
 def test_build_rollout_rejects_unknown_rollout_name(monkeypatch: pytest.MonkeyPatch):
-    from torch.distributed import device_mesh
     from omegaconf import OmegaConf
+    from torch.distributed import device_mesh
 
     from verl.workers.fsdp_workers import ActorRolloutRefWorker
 
@@ -220,4 +226,5 @@ def test_compute_rm_score_without_chat_template_switch_scores_the_input_batch(mo
 
     output = worker.compute_rm_score(data)
 
+    assert output.batch is not None
     assert torch.equal(output.batch['rm_scores'], torch.tensor([[7.0], [9.0]]))

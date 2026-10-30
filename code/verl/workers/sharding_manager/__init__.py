@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from verl.utils.import_utils import is_vllm_available, is_megatron_core_available
+from verl.utils.import_utils import is_megatron_core_available, is_vllm_available
 
 from .base import BaseShardingManager
 from .fsdp_ulysses import FSDPUlyssesShardingManager

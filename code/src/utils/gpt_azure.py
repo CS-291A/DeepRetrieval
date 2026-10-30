@@ -1,10 +1,9 @@
 import os
 
-from langchain_openai import AzureChatOpenAI
 from langchain_core.messages import HumanMessage
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_openai import AzureChatOpenAI
 
 from src.utils.api_keys import load_secret
 

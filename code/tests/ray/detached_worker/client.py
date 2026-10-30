@@ -19,14 +19,12 @@ from typing import Any
 
 import ray
 import torch
+from server import Trainer
+from tensordict import TensorDict
 
 from verl import DataProto
 from verl.single_controller.ray import RayClassWithInitArgs
 from verl.single_controller.ray.megatron import NVMegatronRayWorkerGroup
-
-from tensordict import TensorDict
-
-from server import Trainer
 
 
 def compute_position_id_with_mask(mask):

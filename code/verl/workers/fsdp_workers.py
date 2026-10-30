@@ -21,25 +21,31 @@ import warnings
 
 import torch
 import torch.distributed
-from verl.utils import hdfs_io
-import verl.utils.torch_functional as verl_F
+from codetiming import Timer
 from omegaconf import DictConfig, open_dict
+
+import verl.utils.torch_functional as verl_F
 from verl import DataProto
 from verl.single_controller.base import Worker
-from verl.single_controller.base.decorator import register, Dispatch
-from verl.utils import hf_tokenizer
+from verl.single_controller.base.decorator import Dispatch, register
+from verl.utils import hdfs_io, hf_tokenizer
 from verl.utils.debug import log_gpu_memory_usage
 from verl.utils.distributed import require_cuda
-from verl.utils.fs import copy_local_path_from_hdfs
-from verl.utils.fsdp_utils import get_fsdp_wrap_policy, offload_fsdp_grad, init_fn, get_init_weight_context_manager
-from verl.utils.fsdp_utils import offload_fsdp_optimizer, offload_fsdp_param_and_grad, load_fsdp_optimizer, \
-    load_fsdp_param_and_grad
-from verl.utils.import_utils import import_external_libs, flash_attn_import_error
-from verl.utils.model import compute_position_id_with_mask
 from verl.utils.flops_counter import FlopsCounter
+from verl.utils.fs import copy_local_path_from_hdfs
+from verl.utils.fsdp_utils import (
+    get_fsdp_wrap_policy,
+    get_init_weight_context_manager,
+    init_fn,
+    load_fsdp_optimizer,
+    load_fsdp_param_and_grad,
+    offload_fsdp_grad,
+    offload_fsdp_optimizer,
+    offload_fsdp_param_and_grad,
+)
+from verl.utils.import_utils import flash_attn_import_error, import_external_libs
+from verl.utils.model import compute_position_id_with_mask
 from verl.workers.sharding_manager.fsdp_ulysses import FSDPUlyssesShardingManager
-
-from codetiming import Timer
 
 logger = logging.getLogger(__file__)
 logger.setLevel(os.getenv('VERL_PPO_LOGGING_LEVEL', 'WARN'))
@@ -118,11 +124,13 @@ class ActorRolloutRefWorker(Worker):
                                use_remove_padding=False,
                                enable_gradient_checkpointing=False,
                                trust_remote_code=False):
+        from torch import optim
+        from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+        from torch.distributed.fsdp import MixedPrecision, ShardingStrategy
+        from transformers import AutoConfig, AutoModelForCausalLM
+
         from verl.utils.model import print_model_size, update_model_config
         from verl.utils.torch_dtypes import PrecisionType
-        from transformers import AutoModelForCausalLM, AutoConfig
-        from torch.distributed.fsdp import FullyShardedDataParallel as FSDP, ShardingStrategy, MixedPrecision
-        from torch import optim
 
         log_gpu_memory_usage('Before init from HF AutoModel', logger=logger)
         local_path = copy_local_path_from_hdfs(model_path)
@@ -369,6 +377,7 @@ class ActorRolloutRefWorker(Worker):
         if self._is_offload_optimizer:
             load_fsdp_optimizer(optimizer=self.actor_optimizer, device_id=torch.cuda.current_device())
 
+        assert data.batch is not None, 'update_actor input is the PPO training batch'
         data.batch = data.batch.cuda()
 
         log_gpu_memory_usage('Before update policy', logger=logger)
@@ -415,6 +424,7 @@ class ActorRolloutRefWorker(Worker):
                                      device_id=torch.cuda.current_device(),
                                      load_grad=self._is_offload_grad)
 
+        assert prompts.batch is not None, 'rollout prompts carry input_ids/attention_mask/position_ids'
         prompts.batch = prompts.batch.cuda()
         meta_info = {'eos_token_id': self.tokenizer.eos_token_id, 'pad_token_id': self.tokenizer.pad_token_id}
         prompts.meta_info.update(meta_info)
@@ -438,6 +448,7 @@ class ActorRolloutRefWorker(Worker):
             with self.ulysses_sharding_manager:
                 output = self.ulysses_sharding_manager.preprocess_data(output)
                 old_log_probs = self.actor.compute_log_prob(data=output)
+                assert output.batch is not None, 'rollout output carries the generated tensors'
                 output.batch['old_log_probs'] = old_log_probs
                 output = self.ulysses_sharding_manager.postprocess_data(output)
 
@@ -491,7 +502,8 @@ class ActorRolloutRefWorker(Worker):
 
         # TODO: support DCP and save sharded checkpoints
         import torch.distributed
-        from torch.distributed.fsdp import FullyShardedDataParallel as FSDP, StateDictType, FullStateDictConfig
+        from torch.distributed.fsdp import FullStateDictConfig, StateDictType
+        from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
         cfg = FullStateDictConfig(offload_to_cpu=True, rank0_only=True)
         with FSDP.state_dict_type(self.actor.actor_module, StateDictType.FULL_STATE_DICT, cfg):
             state_dict = self.actor.actor_module.state_dict()
@@ -546,10 +558,12 @@ class CriticWorker(Worker):
 
     def _build_critic_model_optimizer(self, config):
         # the following line is necessary
+        from torch import optim
+        from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+        from torch.distributed.fsdp import MixedPrecision, ShardingStrategy
+
         from verl.utils.model import print_model_size
         from verl.utils.torch_dtypes import PrecisionType
-        from torch.distributed.fsdp import FullyShardedDataParallel as FSDP, ShardingStrategy, MixedPrecision
-        from torch import optim
 
         local_path = copy_local_path_from_hdfs(config.model.path)
         # note that the tokenizer between actor and critic may be different. So override tokenizer info with actor info
@@ -749,7 +763,8 @@ class CriticWorker(Worker):
 
         # TODO: support DCP and save sharded checkpoints
         import torch.distributed
-        from torch.distributed.fsdp import FullyShardedDataParallel as FSDP, StateDictType, FullStateDictConfig
+        from torch.distributed.fsdp import FullStateDictConfig, StateDictType
+        from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
         cfg = FullStateDictConfig(offload_to_cpu=True, rank0_only=True)
         with FSDP.state_dict_type(self.critic_module, StateDictType.FULL_STATE_DICT, cfg):
             state_dict = self.critic_module.state_dict()
@@ -800,8 +815,9 @@ class RewardModelWorker(Worker):
 
     def _build_model(self, config):
         # the following line is necessary
-        from transformers import AutoModelForTokenClassification, AutoConfig
-        from torch.distributed.fsdp import FullyShardedDataParallel as FSDP, ShardingStrategy, CPUOffload
+        from torch.distributed.fsdp import CPUOffload, ShardingStrategy
+        from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+        from transformers import AutoConfig, AutoModelForTokenClassification
 
         # download the checkpoint from hdfs
         local_path = copy_local_path_from_hdfs(config.model.path)
@@ -864,10 +880,18 @@ class RewardModelWorker(Worker):
 
     def _forward_micro_batch(self, micro_batch):
         try:
-            from flash_attn.bert_padding import pad_input, unpad_input, index_first_axis, rearrange  # pyright: ignore[reportMissingImports]  # flash-attn is Linux/CUDA-only (gpu extra)
+            from flash_attn.bert_padding import (  # pyright: ignore[reportMissingImports]  # flash-attn is Linux/CUDA-only (gpu extra)
+                index_first_axis,
+                pad_input,
+                rearrange,
+                unpad_input,
+            )
         except ImportError as e:
             raise flash_attn_import_error('RewardModelWorker') from e
-        from verl.utils.ulysses import ulysses_pad_and_slice_inputs, gather_outpus_and_unpad
+        from verl.utils.ulysses import (
+            gather_outpus_and_unpad,
+            ulysses_pad_and_slice_inputs,
+        )
 
         with torch.no_grad(), torch.autocast(device_type='cuda', dtype=torch.bfloat16):
             input_ids = micro_batch['input_ids']
@@ -921,6 +945,7 @@ class RewardModelWorker(Worker):
             return rm_score
 
     def _expand_to_token_level(self, data: DataProto, scores: torch.Tensor):
+        assert data.batch is not None, 'reward-model input is the rollout batch'
         batch_size = data.batch.batch_size[0]
         # expand as token_level_reward
         attention_mask = data.batch['attention_mask']
@@ -936,6 +961,7 @@ class RewardModelWorker(Worker):
         return token_level_scores
 
     def _switch_chat_template(self, data: DataProto):
+        assert data.batch is not None, 'reward-model input is the rollout batch'
         src_max_length = data.batch['attention_mask'].shape[-1]
 
         src_tokenizer = self.input_tokenizer
@@ -995,8 +1021,10 @@ class RewardModelWorker(Worker):
     @register(dispatch_mode=Dispatch.DP_COMPUTE_PROTO)
     def compute_rm_score(self, data: DataProto):
         import itertools
-        from verl.utils.seqlen_balancing import rearrange_micro_batches, get_reverse_idx
+
+        from verl.utils.seqlen_balancing import get_reverse_idx, rearrange_micro_batches
         data = data.to('cuda')
+        assert data.batch is not None, 'reward-model input is the rollout batch'
         if self._do_switch_chat_template:
             rm_data = self._switch_chat_template(data)
         else:
@@ -1007,12 +1035,14 @@ class RewardModelWorker(Worker):
                 'position_ids': data.batch['position_ids'],
             })
 
+        assert rm_data.batch is not None, 'reward-model input is built from rollout tensors'
         rm_data.batch = rm_data.batch.cuda()
 
         # perform forward computation
         with self.ulysses_sharding_manager:
             rm_data = self.ulysses_sharding_manager.preprocess_data(data=rm_data)
             data = self.ulysses_sharding_manager.preprocess_data(data=data)
+            assert rm_data.batch is not None, 'reward-model input is built from rollout tensors'
 
             use_dynamic_bsz = self.config.use_dynamic_bsz
             indices: list[list[int]] = []  # only read when use_dynamic_bsz

@@ -16,11 +16,15 @@ from typing import Any
 
 import ray
 
-from verl.single_controller.base import Worker
-from verl.single_controller.base.decorator import register, Dispatch
-from verl.single_controller.ray.base import RayResourcePool, RayClassWithInitArgs, RayWorkerGroup, create_colocated_worker_cls
-
 from verl import DataProto
+from verl.single_controller.base import Worker
+from verl.single_controller.base.decorator import Dispatch, register
+from verl.single_controller.ray.base import (
+    RayClassWithInitArgs,
+    RayResourcePool,
+    RayWorkerGroup,
+    create_colocated_worker_cls,
+)
 
 
 @ray.remote
@@ -31,6 +35,7 @@ class Actor(Worker):
 
     @register(dispatch_mode=Dispatch.DP_COMPUTE_PROTO)
     def add(self, data: DataProto):
+        assert data.batch is not None
         data.batch['a'] += self.rank
         return data
 
@@ -44,6 +49,7 @@ class Critic(Worker):
 
     @register(dispatch_mode=Dispatch.DP_COMPUTE_PROTO)
     def sub(self, data: DataProto):
+        assert data.batch is not None
         data.batch['a'] -= self.config['b']
         return data
 

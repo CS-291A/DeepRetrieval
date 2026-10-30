@@ -15,11 +15,11 @@
 
 # -*- coding: utf-8 -*-
 """File-system agnostic IO APIs"""
+import hashlib
 import os
 import tempfile
-import hashlib
 
-from .hdfs_io import copy, makedirs, exists
+from .hdfs_io import copy, exists, makedirs
 
 __all__ = ["copy", "exists", "makedirs"]
 

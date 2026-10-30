@@ -1,10 +1,11 @@
 import argparse
-import os
-import logging
-from huggingface_hub import HfApi, upload_folder, create_repo
-import tempfile
-import shutil
 import glob
+import logging
+import os
+import shutil
+import tempfile
+
+from huggingface_hub import HfApi, create_repo, upload_folder
 from tqdm import tqdm
 
 logging.basicConfig(

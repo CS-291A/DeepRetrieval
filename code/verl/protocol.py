@@ -16,15 +16,15 @@ Implement base data transfer protocol between any two functions, modules.
 We can subclass Protocol to define more detailed batch info with specific keys
 """
 
-import pickle
-import numpy as np
 import copy
-from dataclasses import dataclass, field
-from typing import cast
+import pickle
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
+from typing import Optional, cast
 
-import torch
+import numpy as np
 import tensordict
+import torch
 from tensordict import TensorDict
 from tensordict.utils import NestedKey
 from torch.utils.data import DataLoader, Dataset
@@ -107,6 +107,7 @@ def fold_batch_dim(data: 'DataProto', new_batch_size):
     """
     Fold a batch dim from [bsz, xxx] into [new_bsz, bsz // new_bsz, xxx]
     """
+    assert data.batch is not None, 'fold_batch_dim reshapes tensors; a non-tensor-only DataProto has none'
     batch_size = data.batch.batch_size[0]
 
     assert batch_size % new_batch_size == 0
@@ -127,6 +128,7 @@ def unfold_batch_dim(data: 'DataProto', batch_dims=2):
     """
     Unfold the first n dims as new batch dim
     """
+    assert data.batch is not None, 'unfold_batch_dim reshapes tensors; a non-tensor-only DataProto has none'
     tensor: TensorDict = data.batch
     non_tensor = data.non_tensor_batch
     tensor.auto_batch_size_(batch_dims=batch_dims)
@@ -158,7 +160,7 @@ def collate_fn(x: list['DataProtoItem']):
 @dataclass
 class DataProtoItem:
     # TODO(zhangchi.usc1992) add consistency check
-    batch: TensorDict = None
+    batch: Optional[TensorDict] = None
     non_tensor_batch: dict = field(default_factory=dict)
     meta_info: dict = field(default_factory=dict)
 
@@ -171,7 +173,7 @@ class DataProto:
     TensorDict allows you to manipulate a dictionary of Tensors like a single Tensor. Ideally, the tensors with the
     same batch size should be put inside batch.
     """
-    batch: TensorDict = None
+    batch: Optional[TensorDict] = None
     non_tensor_batch: dict = field(default_factory=dict)
     meta_info: dict = field(default_factory=dict)
 
@@ -189,6 +191,7 @@ class DataProto:
             return 0
 
     def __getitem__(self, item):
+        assert self.batch is not None, 'indexing a DataProto yields a DataProtoItem built from its tensor batch'
         tensor_data = cast(TensorDict, self.batch[item])  # item is an index/slice, never a str key
         non_tensor_data = {key: val[item] for key, val in self.non_tensor_batch.items()}
         return DataProtoItem(batch=tensor_data, non_tensor_batch=non_tensor_data, meta_info=self.meta_info)
@@ -226,6 +229,7 @@ class DataProto:
 
     def print_size(self, prefix=""):
         size_of_tensordict = 0
+        assert self.batch is not None, 'print_size reports the tensor batch size'
         for key, tensor in self.batch.items():
             size_of_tensordict += tensor.element_size() * tensor.numel()
         size_of_numpy_array = 0
@@ -342,6 +346,7 @@ class DataProto:
         # TODO (zhangchi.usc1992) whether to copy
         if batch_keys is not None:
             batch_keys = tuple(batch_keys)
+            assert self.batch is not None, 'batch_keys selects from the tensor batch'
             sub_batch = self.batch.select(*batch_keys)
         else:
             sub_batch = self.batch
@@ -383,6 +388,7 @@ class DataProto:
         tensors = {}
         # tensor batch
         for key in batch_keys:
+            assert self.batch is not None, 'batch_keys pops from the tensor batch'
             assert key in self.batch.keys()
             tensors[key] = self.batch.pop(key)
         non_tensors = {}
@@ -420,6 +426,7 @@ class DataProto:
             raise ValueError(
                 f'new_keys and old_keys must have the same length, but got {len(new_keys)} and {len(old_keys)}')
 
+        assert self.batch is not None, 'rename only renames keys in the tensor batch'
         # tensordict 0.5 declares NestedKey as a runtime class, so a tuple key needs a cast.
         self.batch.rename_key_(cast(NestedKey, tuple(old_keys)), cast(NestedKey, tuple(new_keys)))
 
@@ -438,6 +445,8 @@ class DataProto:
         Returns:
             DataProto: the DataProto after union
         """
+        assert self.batch is not None, 'union merges tensor batches; self has none'
+        assert other.batch is not None, 'union merges tensor batches; other has none'
         self.batch = union_tensor_dict(self.batch, other.batch)
         self.non_tensor_batch = union_numpy_dict(self.non_tensor_batch, other.non_tensor_batch)
         self.meta_info = union_two_dict(self.meta_info, other.meta_info)
@@ -458,6 +467,7 @@ class DataProto:
             Iterator: an iterator that yields a mini-batch data at a time. The total number of iteration steps is
             ``self.batch.batch_size * epochs // mini_batch_size``
         """
+        assert self.batch is not None, 'make_iterator iterates over the tensor batch'
         assert self.batch.batch_size[0] % mini_batch_size == 0, f"{self.batch.batch_size[0]} % {mini_batch_size} != 0"
         # we can directly create a dataloader from TensorDict
         if dataloader_kwargs is None:
@@ -497,7 +507,8 @@ class DataProto:
             self) % chunks == 0, f'only support equal chunk. Got size of DataProto {len(self)} and chunk {chunks}.'
 
         if self.batch is not None:
-            batch_lst = self.batch.chunk(chunks=chunks, dim=0)
+            # TensorDict.chunk is annotated TensorDictBase but returns TensorDict pieces.
+            batch_lst = cast(tuple[TensorDict, ...], self.batch.chunk(chunks=chunks, dim=0))
         else:
             batch_lst = [None for _ in range(chunks)]
 
@@ -531,7 +542,7 @@ class DataProto:
         for batch in data:
             batch_lst.append(batch.batch)
         if batch_lst[0] is not None:
-            new_batch = torch.cat(batch_lst, dim=0)
+            new_batch = cast(TensorDict, torch.cat(batch_lst, dim=0))  # torch.cat dispatches to TensorDict via __torch_function__
         else:
             new_batch = None
 
@@ -546,6 +557,7 @@ class DataProto:
         Note that this operation is in-place
         """
         indices_np = indices.detach().numpy()
+        assert self.batch is not None, 'reorder permutes the tensor batch'
         self.batch = cast(TensorDict, self.batch[indices])  # index tensor, not a str key
         self.non_tensor_batch = {key: val[indices_np] for key, val in self.non_tensor_batch.items()}
 

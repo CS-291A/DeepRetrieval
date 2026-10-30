@@ -13,12 +13,16 @@
 # limitations under the License.
 
 import pytest
+import ray
 import torch
 import torch.distributed
-import ray
 
-from verl.single_controller.ray.base import RayResourcePool, RayClassWithInitArgs, RayWorkerGroup
 from verl.single_controller.base.worker import Worker
+from verl.single_controller.ray.base import (
+    RayClassWithInitArgs,
+    RayResourcePool,
+    RayWorkerGroup,
+)
 
 
 @pytest.fixture(autouse=True)

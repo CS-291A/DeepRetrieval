@@ -1,8 +1,7 @@
-import sys
-import os
 import concurrent.futures
+import os
+import sys
 import time
-
 
 PUBLICATION_DETAILED_PROMPT = """You are a clinical specialist. You are conducting research and doing a medical literature review.
 The research is defined by the following PICO elements:
@@ -49,18 +48,17 @@ sys.path.insert(0, project_root)
 
 
 import argparse
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from tqdm import tqdm
 import json
 from collections import deque
 from threading import Lock
 
-from verl.utils.apis.pubmed import PubmedAPI
+import torch
+from tqdm import tqdm
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
 from src.utils.claude_api import get_claude_response
-from src.utils.gpt_azure import gpt_chat_35_msg, gpt_chat_4o
-
-
+from src.utils.gpt_azure import gpt_chat_4o, gpt_chat_35_msg
+from verl.utils.apis.pubmed import PubmedAPI
 
 # Add these at the top with other global variables
 _request_times = deque(maxlen=20)  # Track last 20 requests

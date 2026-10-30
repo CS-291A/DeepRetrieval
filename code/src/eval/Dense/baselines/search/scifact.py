@@ -1,14 +1,14 @@
 import json
 import sys
-from tqdm import tqdm
-sys.path.append('./')
 
-from src.Dense.scifact.search import FaissHNSWSearcher
-from src.Lucene.utils import ndcg_at_k
+from tqdm import tqdm
+
+sys.path.append('./')
 
 import argparse
 
-
+from src.Dense.scifact.search import FaissHNSWSearcher
+from src.Lucene.utils import ndcg_at_k
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

@@ -25,8 +25,9 @@ def require_cuda(component: str) -> None:
 
 def initialize_global_process_group(timeout_second=36000):
     require_cuda('initialize_global_process_group')
-    import torch.distributed
     from datetime import timedelta
+
+    import torch.distributed
     torch.distributed.init_process_group('nccl', timeout=timedelta(seconds=timeout_second))
     local_rank = int(os.environ["LOCAL_RANK"])
     rank = int(os.environ["RANK"])

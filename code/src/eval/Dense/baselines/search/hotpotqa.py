@@ -1,13 +1,14 @@
 import json
-import sys
 import os
+import sys
+
 from tqdm import tqdm
+
 sys.path.append('./')
 
 from src.Dense.hotpotqa.search import PyseriniFaissSearcher
-from src.Lucene.utils import ndcg_at_k
 from src.eval.BM25.utils import parse_qrel
-
+from src.Lucene.utils import ndcg_at_k
 
 index_path = 'data/local_index_search/hotpotqa/dense_index/faiss-flat.beir-v1.0.0-hotpotqa.bge-base-en-v1.5.20240107'
 model_name = 'BAAI/bge-base-en-v1.5'

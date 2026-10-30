@@ -8,7 +8,7 @@ import torch
 from omegaconf import OmegaConf
 
 from verl.single_controller.base import worker_group as worker_group_module
-from verl.single_controller.base.decorator import register, Dispatch
+from verl.single_controller.base.decorator import Dispatch, register
 from verl.single_controller.base.worker import WorkerHelper, WorkerMeta
 from verl.single_controller.base.worker_group import WorkerGroup
 from verl.single_controller.ray.base import _bind_workers_method_to_parent

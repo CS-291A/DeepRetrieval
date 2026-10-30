@@ -1,10 +1,12 @@
+import os
+import pdb
+import time
+
 import faiss
 import numpy as np
 import torch
-from transformers import AutoTokenizer, AutoModel
-import os
-import time
-import pdb
+from transformers import AutoModel, AutoTokenizer
+
 
 class FaissHNSWSearcher:
     def __init__(self, model_name, index_path, doc_ids_path, device="auto"):

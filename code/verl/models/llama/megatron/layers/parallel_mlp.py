@@ -18,13 +18,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from megatron.core import ModelParallelConfig, tensor_parallel
 from megatron.core import parallel_state as mpu
-from megatron.core import tensor_parallel
-from megatron.core import ModelParallelConfig
 from torch import nn
 from transformers.activations import ACT2FN
-from verl.models.llama.megatron.layers.parallel_linear import MergedColumnParallelLinear
 
+from verl.models.llama.megatron.layers.parallel_linear import MergedColumnParallelLinear
 from verl.utils.megatron import tensor_parallel as tp_utils
 
 

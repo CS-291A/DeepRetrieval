@@ -1,5 +1,5 @@
-import sys
 import os
+import sys
 
 # Debug: Print current directory and Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -9,19 +9,19 @@ sys.path.insert(0, project_root)  # This will now add Panacea-R1 to the path
 
 
 import argparse
-import pandas as pd
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from tqdm import tqdm
 import json
 import re
 
 # Add these at the top with other global variables
 from typing import cast
 
-from pyserini.search.faiss import FaissSearcher, AutoQueryEncoder, DenseSearchResult
-from src.Lucene.utils import ndcg_at_k
+import pandas as pd
+import torch
+from pyserini.search.faiss import AutoQueryEncoder, DenseSearchResult, FaissSearcher
+from tqdm import tqdm
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from src.Lucene.utils import ndcg_at_k
 
 # REPLACE THIS WITH YOUR OWN INDEX PATH
 index_dir = "/home/azureuser/cloudfiles/code/DeepRetrieval/indexes/contriever-msmarco-passage-dense-index"

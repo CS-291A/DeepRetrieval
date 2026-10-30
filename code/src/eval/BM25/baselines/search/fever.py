@@ -1,13 +1,14 @@
 import json
-import sys
 import os
+import sys
+
 from tqdm import tqdm
+
 sys.path.append('./')
 
+from src.eval.BM25.utils import parse_qrel
 from src.Lucene.fever.search import PyseriniMultiFieldSearch
 from src.Lucene.utils import ndcg_at_k
-from src.eval.BM25.utils import parse_qrel
-
 
 if not os.path.exists("data/local_index_search/fever/pyserini_index"):
     print("[Warning] Pyserini index not found for fever")

@@ -1,15 +1,17 @@
 import json
-import sys
 import os
+import sys
+
 from tqdm import tqdm
+
 sys.path.append('./')
 
-import torch
 from typing import cast
 
-from pyserini.search.faiss import FaissSearcher, AutoQueryEncoder, DenseSearchResult
-from src.Lucene.utils import ndcg_at_k
+import torch
+from pyserini.search.faiss import AutoQueryEncoder, DenseSearchResult, FaissSearcher
 
+from src.Lucene.utils import ndcg_at_k
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 

@@ -15,6 +15,7 @@
 from enum import Enum
 from functools import wraps
 from types import FunctionType
+
 from verl.protocol import DataProtoFuture
 
 # here we add a magic number of avoid user-defined function already have this attribute
@@ -126,8 +127,9 @@ def dispatch_megatron_compute_data_proto(worker_group, *args, **kwargs):
 
 
 def _concat_data_proto_or_future(output: list):
-    from verl.protocol import DataProto, DataProtoFuture
     import ray
+
+    from verl.protocol import DataProto, DataProtoFuture
 
     # make sure all the elements in output has the same type
     for o in output:
@@ -147,8 +149,9 @@ def collect_megatron_compute_data_proto(worker_group, output):
     """
     Each output must be a DataProto. We concat the dim=0 of output
     """
-    from verl.protocol import DataProto
     import ray
+
+    from verl.protocol import DataProto
 
     output = collect_megatron_compute(worker_group, output)
     for o in output:
@@ -285,8 +288,9 @@ def dispatch_dp_compute_data_proto_with_func(worker_group, *args, **kwargs):
 
 
 def collect_dp_compute_data_proto(worker_group, output):
-    from verl.protocol import DataProto
     import ray
+
+    from verl.protocol import DataProto
 
     for o in output:
         assert isinstance(o, (DataProto, ray.ObjectRef)), f"expecting {o} to be DataProto, but got {type(o)}"

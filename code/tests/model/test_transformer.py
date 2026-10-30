@@ -13,12 +13,19 @@
 # limitations under the License.
 
 import torch
-from verl.utils.model import create_random_mask, compute_position_id_with_mask
-from verl.utils.torch_functional import masked_mean, log_probs_from_logits_all_rmpad
-from flash_attn.bert_padding import unpad_input, pad_input, index_first_axis, rearrange  # pyright: ignore[reportMissingImports]  # flash_attn is Linux/CUDA-only (gpu extra)
+from flash_attn.bert_padding import index_first_axis, pad_input, rearrange, unpad_input  # pyright: ignore[reportMissingImports]  # flash_attn is Linux/CUDA-only (gpu extra)
+from transformers import (
+    AutoModelForCausalLM,
+    AutoModelForTokenClassification,
+    GemmaConfig,
+    LlamaConfig,
+    MistralConfig,
+    Qwen2Config,
+)
 
-from transformers import LlamaConfig, MistralConfig, GemmaConfig, Qwen2Config
-from transformers import AutoModelForCausalLM, AutoModelForTokenClassification
+from verl.utils.model import compute_position_id_with_mask, create_random_mask
+from verl.utils.torch_functional import log_probs_from_logits_all_rmpad, masked_mean
+
 # TODO(sgm): add more models for test
 # we only need one scale for each model
 test_configs = [

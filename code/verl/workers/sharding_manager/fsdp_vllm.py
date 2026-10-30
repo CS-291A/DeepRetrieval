@@ -12,19 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
 import logging
+import os
+
 import torch
 import torch.distributed
-from torch.distributed.fsdp.fully_sharded_data_parallel import FullyShardedDataParallel as FSDP
-from torch.distributed.fsdp.api import ShardedStateDictConfig, StateDictType, FullStateDictConfig
 from torch.distributed.device_mesh import DeviceMesh
+from torch.distributed.fsdp.api import (
+    FullStateDictConfig,
+    ShardedStateDictConfig,
+    StateDictType,
+)
+from torch.distributed.fsdp.fully_sharded_data_parallel import (
+    FullyShardedDataParallel as FSDP,
+)
 
+from verl import DataProto
 from verl.third_party.vllm import LLM
 from verl.third_party.vllm import parallel_state as vllm_ps
-from verl import DataProto
-from verl.utils.torch_functional import (broadcast_dict_tensor, allgather_dict_tensors)
 from verl.utils.debug import log_gpu_memory_usage
+from verl.utils.torch_functional import allgather_dict_tensors, broadcast_dict_tensor
 
 from .base import BaseShardingManager
 
@@ -113,6 +120,7 @@ class FSDPVLLMShardingManager(BaseShardingManager):
 
     def preprocess_data(self, data: DataProto) -> DataProto:
         # TODO: Current impl doesn't consider FSDP with torch micro-dp
+        assert data.batch is not None, 'rollout input prompts are all-gathered across the TP group'
         data.batch = allgather_dict_tensors(data.batch.contiguous(),
                                             size=vllm_ps.get_tensor_model_parallel_world_size(),
                                             group=vllm_ps.get_tensor_model_parallel_group(),
@@ -122,6 +130,7 @@ class FSDPVLLMShardingManager(BaseShardingManager):
 
     def postprocess_data(self, data: DataProto) -> DataProto:
         # TODO: Current impl doesn't consider FSDP with torch micro-dp
+        assert data.batch is not None, 'rollout output tensors are broadcast across the TP group'
         broadcast_dict_tensor(data.batch,
                               src=vllm_ps.get_tensor_model_parallel_src_rank(),
                               group=vllm_ps.get_tensor_model_parallel_group())

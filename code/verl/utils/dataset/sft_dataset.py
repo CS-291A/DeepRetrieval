@@ -21,14 +21,13 @@ Each parquet file contains
 from typing import cast
 
 import pandas as pd
-
 import torch
 from torch.utils.data import Dataset
 from transformers import PreTrainedTokenizer
 
+from verl.utils import hf_tokenizer
 from verl.utils.fs import copy_local_path_from_hdfs
 from verl.utils.model import compute_position_id_with_mask
-from verl.utils import hf_tokenizer
 
 
 class SFTDataset(Dataset):
@@ -73,7 +72,8 @@ class SFTDataset(Dataset):
     def _read_files_and_tokenize(self):
 
         def series_to_item(ls):
-            import pandas, numpy
+            import numpy
+            import pandas
             while isinstance(ls, (pandas.Series, numpy.ndarray)) and len(ls) == 1:
                 ls = ls[0]
             return ls

@@ -1,13 +1,14 @@
 import json
-import sys
 import os
+import sys
+
 from tqdm import tqdm
+
 sys.path.append('./')
 
 from src.Dense.msmarco_beir.search import PyseriniFaissSearcher
-from src.Lucene.utils import ndcg_at_k
 from src.eval.BM25.utils import parse_qrel
-
+from src.Lucene.utils import ndcg_at_k
 
 index_path = 'data/local_index_search/msmarco_beir/dense_index/faiss-flat.msmarco-v1-passage.bge-base-en-v1.5.20240107'
 model_name = 'BAAI/bge-base-en-v1.5'

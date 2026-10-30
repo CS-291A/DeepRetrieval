@@ -1,4 +1,5 @@
 import json
+
 import boto3
 
 from src.utils.api_keys import load_secret

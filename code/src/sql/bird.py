@@ -1,7 +1,7 @@
 import sqlite3
 from contextlib import closing
-from func_timeout import func_timeout, FunctionTimedOut
 
+from func_timeout import FunctionTimedOut, func_timeout
 
 
 class BirdDatabaseSearcher:

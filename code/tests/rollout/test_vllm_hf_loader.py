@@ -13,14 +13,17 @@
 # limitations under the License.
 
 import os
+
 import torch
+from transformers import (
+    AutoConfig,
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    GenerationConfig,
+)
+from vllm import SamplingParams  # pyright: ignore[reportMissingImports]  # vllm is Linux/CUDA-only (gpu extra)
 
 from verl.third_party.vllm import LLM, vllm_version
-from vllm import SamplingParams  # pyright: ignore[reportMissingImports]  # vllm is Linux/CUDA-only (gpu extra)
-from transformers import AutoTokenizer, AutoConfig, AutoModelForCausalLM
-
-from transformers import GenerationConfig
-
 from verl.utils.torch_functional import pad_sequence_to_length
 from verl.workers.rollout.vllm_rollout.vllm_rollout import _pre_process_inputs
 

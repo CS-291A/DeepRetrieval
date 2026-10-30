@@ -15,17 +15,23 @@
 Megatron Reward Model.
 """
 
-from tensordict import TensorDict
-from verl import DataProto
 import torch
 import torch.distributed
-
-from verl.utils.torch_functional import pad_sequence_to_length
-from verl.utils.megatron.pipeline_parallel import (compute_transformers_input_shapes, make_batch_generator)
-from verl.utils.torch_functional import broadcast_dict_tensor, split_dict_tensor_into_batches
-from verl.workers.reward_model.base import BasePPORewardModel
 from megatron.core import parallel_state as mpu
 from megatron.core.pipeline_parallel import get_forward_backward_func
+from tensordict import TensorDict
+
+from verl import DataProto
+from verl.utils.megatron.pipeline_parallel import (
+    compute_transformers_input_shapes,
+    make_batch_generator,
+)
+from verl.utils.torch_functional import (
+    broadcast_dict_tensor,
+    pad_sequence_to_length,
+    split_dict_tensor_into_batches,
+)
+from verl.workers.reward_model.base import BasePPORewardModel
 
 
 class MegatronRewardModel(BasePPORewardModel):

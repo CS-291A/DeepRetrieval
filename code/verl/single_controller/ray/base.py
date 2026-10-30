@@ -18,11 +18,19 @@ from typing import Any, cast
 import ray
 import ray.actor
 from ray.util import list_named_actors
-from ray.util.placement_group import placement_group, PlacementGroup
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy, NodeAffinitySchedulingStrategy
+from ray.util.placement_group import PlacementGroup, placement_group
+from ray.util.scheduling_strategies import (
+    NodeAffinitySchedulingStrategy,
+    PlacementGroupSchedulingStrategy,
+)
 from ray.util.state import get_actor
 
-from verl.single_controller.base import WorkerGroup, ResourcePool, ClassWithInitArgs, Worker
+from verl.single_controller.base import (
+    ClassWithInitArgs,
+    ResourcePool,
+    Worker,
+    WorkerGroup,
+)
 
 __all__ = ['Worker']
 
@@ -101,13 +109,11 @@ def extract_pg_from_exist(resource_pools: dict[str, RayResourcePool], src_role_n
     sorted_process_on_nodes = sorted([(val, idx) for idx, val in enumerate(resource_pool.store)], reverse=True)
 
     unsorted_pgs: list[tuple[int, PlacementGroup]] = []
-    searching_idx = 0
-    for request_process, original_idx in sorted_process_on_nodes:
+    for searching_idx, (request_process, original_idx) in enumerate(sorted_process_on_nodes):
         assert searching_idx < len(sorted_src_pgs), f"no enough nodes for request: searching {searching_idx} th node"
         assert request_process <= sorted_src_pgs[searching_idx].bundle_count, \
             f"requesting {request_process} processes, bundle count cannot satisfy"
         unsorted_pgs.append((original_idx, sorted_src_pgs[searching_idx]))
-        searching_idx += 1
 
     return [pg for _, pg in sorted(unsorted_pgs)]
 
@@ -140,7 +146,7 @@ class RayClassWithInitArgs(ClassWithInitArgs):
     def update_options(self, options: dict):
         self._options.update(options)
 
-    def __call__(self,
+    def __call__(self,  # pyright: ignore[reportIncompatibleMethodOverride]  # Ray actors need placement args; never called via the base type
                  placement_group,
                  placement_group_bundle_idx,
                  use_gpu: bool = True,
@@ -338,16 +344,16 @@ class RayWorkerGroup(WorkerGroup):
         # list 中的每一个分别发到对应的 worker 上去
         # print(f"execute_all_async: method {method_name}({args}, {kwargs})")
         length = len(self._workers)
-        if all(isinstance(arg, list) for arg in args) and all(isinstance(kwarg, list) for kwarg in kwargs.values()):
-            if all(len(arg) == length for arg in args) and all(len(kwarg) == length for kwarg in kwargs.values()):
-                # print(f"splitting args and kwargs into {length} shards")
-                result = []
-                for i in range(length):
-                    sliced_args = tuple(arg[i] for arg in args)
-                    sliced_kwargs = {k: v[i] for k, v in kwargs.items()}
-                    remote_call = getattr(self._workers[i], method_name)
-                    result.append(remote_call.remote(*sliced_args, **sliced_kwargs))
-                return result
+        if (all(isinstance(arg, list) for arg in args) and all(isinstance(kwarg, list) for kwarg in kwargs.values())
+                and all(len(arg) == length for arg in args) and all(len(kwarg) == length for kwarg in kwargs.values())):
+            # print(f"splitting args and kwargs into {length} shards")
+            result = []
+            for i in range(length):
+                sliced_args = tuple(arg[i] for arg in args)
+                sliced_kwargs = {k: v[i] for k, v in kwargs.items()}
+                remote_call = getattr(self._workers[i], method_name)
+                result.append(remote_call.remote(*sliced_args, **sliced_kwargs))
+            return result
 
         return [getattr(worker, method_name).remote(*args, **kwargs) for worker in self._workers]
 
@@ -373,9 +379,10 @@ Utilities that enables creating workers inside the same ray.Actor,
 with code written in separate ray.Actors.
 """
 
-from unittest.mock import patch
-from verl.single_controller.base.decorator import MAGIC_ATTR
 import os
+from unittest.mock import patch
+
+from verl.single_controller.base.decorator import MAGIC_ATTR
 
 
 def _bind_workers_method_to_parent(cls, key, user_defined_cls):
@@ -397,11 +404,11 @@ def _bind_workers_method_to_parent(cls, key, user_defined_cls):
 
             def generate_function(name):
 
-                def func(self, *args, **kwargs):
+                def dispatch_to_worker(self, *args, **kwargs):
                     # dispatch to the actual worker
                     return getattr(self.worker_dict[key], name)(*args, **kwargs)
 
-                return func
+                return dispatch_to_worker
 
             func = generate_function(method_name)
             # pass MAGIC_ATTR for outer worker group
@@ -410,8 +417,8 @@ def _bind_workers_method_to_parent(cls, key, user_defined_cls):
                 method_name_with_prefix = key + '_' + method_name
                 setattr(cls, method_name_with_prefix, func)
                 # print(f'Binding {method_name_with_prefix}')
-            except Exception:
-                raise ValueError(f'Fail to set method_name {method_name}')
+            except (AttributeError, TypeError) as e:  # what setattr on a class can raise
+                raise ValueError(f'Fail to set method_name {method_name}') from e
 
 
 def _unwrap_ray_remote(cls):

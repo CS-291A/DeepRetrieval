@@ -1,10 +1,13 @@
 import json
-import sys
 import os
+import sys
+
 from tqdm import tqdm
+
 sys.path.append('./')
 
 from pyserini.search.lucene import LuceneSearcher
+
 from src.Lucene.utils import ndcg_at_k
 
 index_dir = "indexes/lucene-index-msmarco-passage"

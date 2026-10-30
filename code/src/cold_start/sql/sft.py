@@ -1,14 +1,14 @@
-import random
 import json
 import os
+import random
+
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
 from datasets import Dataset
+from transformers import AutoModelForCausalLM, AutoTokenizer
 from trl import (
     SFTConfig,
     SFTTrainer,
 )
-
 
 # os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
 os.environ['CUDA_VISIBLE_DEVICES'] = '2,3'

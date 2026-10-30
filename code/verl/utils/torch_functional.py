@@ -391,9 +391,10 @@ def post_process_logits(input_ids, logits, temperature, top_k, top_p):
 Optimizer related
 """
 
-from torch.optim.optimizer import Optimizer
-from torch.optim.lr_scheduler import LambdaLR
 import math
+
+from torch.optim.lr_scheduler import LambdaLR
+from torch.optim.optimizer import Optimizer
 
 
 def get_cosine_schedule_with_warmup(

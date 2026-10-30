@@ -1,6 +1,6 @@
-import sys
-import os
 import concurrent.futures
+import os
+import sys
 import time
 from typing import Any
 
@@ -11,19 +11,23 @@ project_root = os.path.dirname(os.path.dirname(current_dir))  # Remove one dirna
 sys.path.insert(0, project_root)  # This will now add Panacea-R1 to the path
 
 import argparse
-import pandas as pd
-from tqdm import tqdm
 import json
 import re
 
+import pandas as pd
+from tqdm import tqdm
+
 import utils.java_init  # noqa: F401  (imported for its side effect: sets JAVA_HOME)
 
-# Add these at the top with other global variables
-from pyserini.search.lucene import LuceneSearcher
-from pyserini.eval.evaluate_dpr_retrieval import has_answers, SimpleTokenizer
-from src.utils.gpt_azure import gpt_chat_4o, gpt_chat_35_msg
-from src.utils.claude_api import get_claude_response
+# utils.java_init must run before pyserini is imported; keep import sorting from moving it.
+# isort: split
 
+# Add these at the top with other global variables
+from pyserini.eval.evaluate_dpr_retrieval import SimpleTokenizer, has_answers
+from pyserini.search.lucene import LuceneSearcher
+
+from src.utils.claude_api import get_claude_response
+from src.utils.gpt_azure import gpt_chat_4o, gpt_chat_35_msg
 
 _searcher = None
 _tokenizer = SimpleTokenizer()

@@ -1,14 +1,15 @@
 import json
+import sys
+
 import numpy as np
 import torch
-from transformers import AutoTokenizer, AutoModel
 from tqdm import tqdm
-import sys
+from transformers import AutoModel, AutoTokenizer
+
 sys.path.append('code')
 import os
 
 from src.Dense.utils import average_pool
-
 
 
 def get_detailed_instruct(task_description: str, query: str) -> str:

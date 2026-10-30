@@ -1,15 +1,17 @@
-import re
-import random
 import json
 import logging
-import sys
 import os
+import random
+import re
+import sys
 from typing import Any, cast
+
 sys.path.append('./')
 
 import torch
+from pyserini.search.faiss import AutoQueryEncoder, FaissSearcher
 from pyserini.search.lucene import LuceneSearcher
-from pyserini.search.faiss import FaissSearcher, AutoQueryEncoder
+
 from src.Lucene.utils import ndcg_at_k
 
 # REPLACE THIS WITH YOUR OWN INDEX PATH

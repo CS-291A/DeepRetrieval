@@ -1,6 +1,8 @@
 import json
-from pyserini.search.lucene import LuceneSearcher
 import time
+
+from pyserini.search.lucene import LuceneSearcher
+
 
 class PyseriniMultiFieldSearch:
     def __init__(self, index_dir="pyserini_index"):

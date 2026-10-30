@@ -19,22 +19,26 @@ import itertools
 
 import torch
 from torch import nn
-from torch.optim.optimizer import Optimizer
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+from torch.optim.optimizer import Optimizer
 
+import verl.utils.torch_functional as verl_F
 from verl import DataProto
 from verl.trainer.ppo import core_algos
-from verl.workers.actor import BasePPOActor
-from verl.utils.py_functional import append_to_dict
-from verl.utils.torch_functional import logprobs_from_logits, masked_mean
-from verl.utils.ulysses import ulysses_pad_and_slice_inputs, gather_outpus_and_unpad
-from verl.utils.seqlen_balancing import rearrange_micro_batches, get_reverse_idx
-import verl.utils.torch_functional as verl_F
-
 from verl.utils.import_utils import flash_attn_import_error
+from verl.utils.py_functional import append_to_dict
+from verl.utils.seqlen_balancing import get_reverse_idx, rearrange_micro_batches
+from verl.utils.torch_functional import logprobs_from_logits, masked_mean
+from verl.utils.ulysses import gather_outpus_and_unpad, ulysses_pad_and_slice_inputs
+from verl.workers.actor import BasePPOActor
 
 try:
-    from flash_attn.bert_padding import pad_input, unpad_input, rearrange, index_first_axis  # pyright: ignore[reportMissingImports]  # flash-attn is Linux/CUDA-only (gpu extra)
+    from flash_attn.bert_padding import (  # pyright: ignore[reportMissingImports]  # flash-attn is Linux/CUDA-only (gpu extra)
+        index_first_axis,
+        pad_input,
+        rearrange,
+        unpad_input,
+    )
 except ImportError as e:
     raise flash_attn_import_error('DataParallelPPOActor') from e
 
@@ -184,6 +188,7 @@ class DataParallelPPOActor(BasePPOActor):
 
         select_keys = ['responses', 'input_ids', 'attention_mask', 'position_ids']
         batch = data.select(batch_keys=select_keys).batch
+        assert batch is not None, 'select with batch_keys keeps the tensor batch'
 
         indices: list[list[int]] = []  # only read when use_dynamic_bsz
         if use_dynamic_bsz:
@@ -220,6 +225,7 @@ class DataParallelPPOActor(BasePPOActor):
         if self.config.use_kl_loss:
             select_keys.append('ref_log_prob')
         batch = data.select(batch_keys=select_keys).batch
+        assert batch is not None, 'select with batch_keys keeps the tensor batch'
 
         # Split to make minibatch iterator for updating the actor
         # See PPO paper for details. https://arxiv.org/abs/1707.06347

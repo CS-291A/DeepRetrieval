@@ -1,5 +1,5 @@
-import sys
 import os
+import sys
 
 # Debug: Print current directory and Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -9,17 +9,17 @@ sys.path.insert(0, project_root)  # This will now add Panacea-R1 to the path
 
 
 import argparse
-import pandas as pd
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from tqdm import tqdm
 import json
 import re
 
+import pandas as pd
+import torch
+from pyserini.eval.evaluate_dpr_retrieval import SimpleTokenizer, has_answers
+
 # Add these at the top with other global variables
 from pyserini.search.lucene import LuceneSearcher
-from pyserini.eval.evaluate_dpr_retrieval import has_answers, SimpleTokenizer
-
+from tqdm import tqdm
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 _searcher = None
 _tokenizer = SimpleTokenizer()

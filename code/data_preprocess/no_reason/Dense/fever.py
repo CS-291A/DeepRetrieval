@@ -1,12 +1,12 @@
-import os
-from datasets import Dataset, concatenate_datasets
-from typing import Any, cast
-from collections.abc import Iterable
-from verl.utils.hdfs_io import copy, makedirs
 import argparse
 import json
+import os
+from collections.abc import Iterable
+from typing import Any, cast
 
+from datasets import Dataset, concatenate_datasets
 
+from verl.utils.hdfs_io import copy, makedirs
 
 INSTRUCTION = """
 You are an expert in generating queries for dense retrieval. Given a claim, your task is to retain the original query while expanding it with additional semantically relevant information, to retrieve documents that support or refute the claim. If no useful expansion is needed, return the original query as is."""

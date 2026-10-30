@@ -1,15 +1,15 @@
-import re
-import random
 import json
 import logging
+import random
+import re
+
 try:
     import utils.java_init  # noqa: F401  (imported for its side effect: sets JAVA_HOME)
 except ImportError:
     print("Failed to import java_init")
 
+from pyserini.eval.evaluate_dpr_retrieval import SimpleTokenizer, has_answers
 from pyserini.search.lucene import LuceneSearcher
-from pyserini.eval.evaluate_dpr_retrieval import has_answers, SimpleTokenizer
-
 
 # Instead of initializing at import time, we'll create a global variable but initialize it later
 _searcher = None

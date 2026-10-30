@@ -1,6 +1,6 @@
-import re
-import random
 import json
+import random
+import re
 
 
 def extract_solution(solution_str):

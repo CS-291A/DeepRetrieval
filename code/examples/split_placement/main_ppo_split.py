@@ -15,15 +15,14 @@
 Note that we don't combine the main with ray_trainer as ray_trainer is used by other main.
 """
 
-from verl.trainer.ppo.ray_trainer import RayPPOTrainer
+import hydra
+import ray
+from split_monkey_patch import fit
+
 # The upstream gsm8k/MATH reward functions were removed in DeepRetrieval; reuse the main trainer's
 # RewardManager, which scores every DeepRetrieval data source.
 from verl.trainer.main_ppo import RewardManager
-
-
-import ray
-import hydra
-from split_monkey_patch import fit
+from verl.trainer.ppo.ray_trainer import RayPPOTrainer
 
 
 @hydra.main(config_path='config', config_name='ppo_trainer_split', version_base=None)
@@ -37,11 +36,12 @@ def main(config):
 
 @ray.remote
 def main_task(config):
-    from verl.utils.fs import copy_local_path_from_hdfs
-
     # print initial config
     from pprint import pprint
+
     from omegaconf import OmegaConf
+
+    from verl.utils.fs import copy_local_path_from_hdfs
     pprint(OmegaConf.to_container(config, resolve=True))  # resolve=True will eval symbol values
     OmegaConf.resolve(config)
 
@@ -55,14 +55,14 @@ def main_task(config):
     # define worker classes
     if config.actor_rollout_ref.actor.strategy == 'fsdp':
         assert config.actor_rollout_ref.actor.strategy == config.critic.strategy
-        from verl.workers.fsdp_workers import ActorRolloutRefWorker, CriticWorker
         from verl.single_controller.ray import RayWorkerGroup
+        from verl.workers.fsdp_workers import ActorRolloutRefWorker, CriticWorker
         ray_worker_group_cls = RayWorkerGroup
 
     elif config.actor_rollout_ref.actor.strategy == 'megatron':
         assert config.actor_rollout_ref.actor.strategy == config.critic.strategy
-        from verl.workers.megatron_workers import ActorRolloutRefWorker, CriticWorker
         from verl.single_controller.ray.megatron import NVMegatronRayWorkerGroup
+        from verl.workers.megatron_workers import ActorRolloutRefWorker, CriticWorker
         ray_worker_group_cls = NVMegatronRayWorkerGroup
 
     else:

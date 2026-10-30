@@ -15,10 +15,13 @@
 
 from apex.optimizers import FusedAdam as Adam
 from apex.optimizers import FusedSGD as SGD
+from megatron.optimizer import (
+    Float16OptimizerWithFloat16Params,
+    FP32Optimizer,
+    get_param_groups,
+)
 from megatron.optimizer.distrib_optimizer import DistributedOptimizer
 from megatron.optimizer.grad_scaler import ConstantGradScaler, DynamicGradScaler
-from megatron.optimizer import Float16OptimizerWithFloat16Params, FP32Optimizer
-from megatron.optimizer import get_param_groups
 
 from verl.utils.megatron.optimizer_config import OptimizerConfig
 

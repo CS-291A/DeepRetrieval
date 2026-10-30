@@ -1,8 +1,9 @@
 import json
-import requests
-import traceback
 import time
+import traceback
+
 import pandas as pd
+import requests
 
 CTGOV_BASE_URL = "https://clinicaltrials.gov/api/v2/studies?query.term="
 CTGOV_NCTID_BASE_URL = "https://clinicaltrials.gov/api/v2/studies?&query.id="

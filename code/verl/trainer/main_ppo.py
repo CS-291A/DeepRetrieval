@@ -15,9 +15,9 @@
 Note that we don't combine the main with ray_trainer as ray_trainer is used by other main.
 """
 
-import sys
-import os
 import logging
+import os
+import sys
 from collections.abc import Callable
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -26,12 +26,15 @@ sys.path.insert(0, project_root)
 
 import utils.java_init  # noqa: F401  (imported for its side effect: sets JAVA_HOME)
 
-from verl import DataProto
+# utils.java_init must run before pyserini is imported; keep import sorting from moving it.
+# isort: split
+
 import torch
 
+from verl import DataProto
 from verl.trainer.ppo.ray_trainer import RayPPOTrainer
-from verl.utils.apis.pubmed import PubmedAPI
 from verl.utils.apis.ctgov import CTGovAPI
+from verl.utils.apis.pubmed import PubmedAPI
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +160,7 @@ class RewardManager:
         """We will expand this function gradually based on the available datasets"""
 
         # If there is rm score, we directly return rm score. Otherwise, we compute via rm_score_fn
+        assert data.batch is not None, 'reward input is the rollout batch'
         if 'rm_scores' in data.batch.keys():  # pyright: ignore[reportOperatorIssue]  # tensordict 0.5 types NestedKey as a runtime class, so str keys are rejected by the stub
             return data.batch['rm_scores']
 
@@ -166,6 +170,7 @@ class RewardManager:
 
         for i in range(len(data)):
             data_item = data[i]  # DataProtoItem
+            assert data_item.batch is not None, 'DataProto.__getitem__ always slices the tensor batch'
 
             prompt_ids = data_item.batch['prompts']
 
@@ -220,8 +225,8 @@ class RewardManager:
         return reward_tensor
 
 
-import ray
 import hydra
+import ray
 
 
 @hydra.main(config_path='config', config_name='ppo_trainer', version_base=None)
@@ -242,11 +247,12 @@ def main(config):
 
 @ray.remote
 def main_task(config):
-    from verl.utils.fs import copy_local_path_from_hdfs
-
     # print initial config
     from pprint import pprint
+
     from omegaconf import OmegaConf
+
+    from verl.utils.fs import copy_local_path_from_hdfs
     pprint(OmegaConf.to_container(config, resolve=True))  # resolve=True will eval symbol values
     OmegaConf.resolve(config)
 
@@ -260,14 +266,14 @@ def main_task(config):
     # define worker classes
     if config.actor_rollout_ref.actor.strategy == 'fsdp':
         assert config.actor_rollout_ref.actor.strategy == config.critic.strategy
-        from verl.workers.fsdp_workers import ActorRolloutRefWorker, CriticWorker
         from verl.single_controller.ray import RayWorkerGroup
+        from verl.workers.fsdp_workers import ActorRolloutRefWorker, CriticWorker
         ray_worker_group_cls = RayWorkerGroup
 
     elif config.actor_rollout_ref.actor.strategy == 'megatron':
         assert config.actor_rollout_ref.actor.strategy == config.critic.strategy
-        from verl.workers.megatron_workers import ActorRolloutRefWorker, CriticWorker
         from verl.single_controller.ray.megatron import NVMegatronRayWorkerGroup
+        from verl.workers.megatron_workers import ActorRolloutRefWorker, CriticWorker
         ray_worker_group_cls = NVMegatronRayWorkerGroup
 
     else:

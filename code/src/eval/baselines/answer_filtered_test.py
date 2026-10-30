@@ -1,17 +1,22 @@
 from tqdm import tqdm
-from src.utils.claude_api import get_claude_response
 
 import utils.java_init  # noqa: F401  (imported for its side effect: sets JAVA_HOME)
-import re
-# Add these at the top with other global variables
-from pyserini.search.lucene import LuceneSearcher
-from pyserini.eval.evaluate_dpr_retrieval import has_answers, SimpleTokenizer
+from src.utils.claude_api import get_claude_response
+
+# utils.java_init must run before pyserini is imported; keep import sorting from moving it.
+# isort: split
+import argparse
+import concurrent.futures
 import json
 import os
-import argparse
-import pandas as pd
+import re
 import time
-import concurrent.futures
+
+import pandas as pd
+from pyserini.eval.evaluate_dpr_retrieval import SimpleTokenizer, has_answers
+
+# Add these at the top with other global variables
+from pyserini.search.lucene import LuceneSearcher
 
 _searcher = None
 _tokenizer = SimpleTokenizer()

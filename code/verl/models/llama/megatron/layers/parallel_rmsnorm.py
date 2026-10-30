@@ -13,12 +13,13 @@
 # limitations under the License.
 
 import numbers
+
 import torch
+from apex.normalization.fused_layer_norm import fused_rms_norm_affine
 from megatron.core import ModelParallelConfig
 from torch import nn
 from transformers import LlamaConfig
 
-from apex.normalization.fused_layer_norm import fused_rms_norm_affine
 from verl.utils.megatron import sequence_parallel as sp_utils
 
 

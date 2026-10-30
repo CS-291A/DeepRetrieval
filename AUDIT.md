@@ -40,7 +40,7 @@ Also user-visible but not in the G list:
 - **Batched dense msmarco_subset search**.
 - **Eval rate limiter only warns.**
 - **Baseline generators re-save the previous query's text** when all 10 API attempts fail.
-- **`DataProto.batch` Optional typing** (T4, 11 of the 15 remaining pyright errors). `None` is a real runtime state: `update_actor`/`update_critic` return metrics-only DataProtos every PPO step, and `concat`/`chunk`/`to`/`__len__` handle it. See Part 6, X3.
+- ~~**`DataProto.batch` Optional typing**~~ — done (Part 6, X6). `None` is a real runtime state: `update_actor`/`update_critic` return metrics-only DataProtos every PPO step, and `concat`/`chunk`/`to`/`__len__` handle it. See Part 6, X3.
 - **`pubdate.py` resume** truncates the input jsonl when resuming mid-file (not fixed; hardcoded paths keep it from running as shipped).
 - **`ray_trainer.py:689`** still lists the removed `trial_no_reason` data source in a metric condition. It's harmless because no module exists for it.
 
@@ -916,7 +916,7 @@ annotation. Suppressing in the tests would leave stale ignores once verl is fixe
 - Test: `test_main_ppo.py::test_select_rm_score_fn_rejects_removed_wikisql_data_source`. It failed (`DID NOT RAISE`) before the branch was removed; a wikisql data source now gets the standard `No reward function for data_source '...'` error. The two tests of the deleted reward module were removed.
 - Behaviour impact: none on any path that worked.
 
-### X3 — `DataProto.batch` typing (decision, not changed)
+### X3 — `DataProto.batch` typing (decided: `Optional[TensorDict]`, implemented in X6)
 - Fact: `batch` is `None` at runtime by design. `fsdp_workers.update_actor` (`:394`) and `update_critic` (`:731`) return `DataProto(meta_info={'metrics': ...})` with no batch every PPO step. `DataProto.concat` gathers those across DP workers with an explicit `if batch_lst[0] is not None ... else None`. `__len__`, `to`, `chunk`, `repeat` and `check_consistency` all guard `self.batch is not None`. The tests also build non-tensor-only DataProtos.
 - So `Optional[TensorDict]` is the honest type. The cost is narrowing at about 137 `data.batch[...]` sites that always hold a batch (rollout outputs, training batches).
 - Options:
@@ -931,3 +931,45 @@ annotation. Suppressing in the tests would leave stale ignores once verl is fixe
 - Added `# audit: ignore[...] <reason>` for a fake API that must branch, a per-split fixture loop, and httpx2 `MockTransport` (no network). `audit_tests.py tests/deepretrieval`: clean.
 
 **Verification:** `uv run pytest -q` → `542 passed, 16 skipped` (down 3: the deleted wikisql module's 2 tests and its `extract_solution` param, plus its import param in `core/test_pyright_bugs.py`; up 1 for the new dispatch test). Pyright `15 errors` (unchanged).
+
+### X5 — Import sorting (ruff I001)
+- Applied to all 402 I001 findings outside `verl/third_party` (vendored vllm left diffable against upstream).
+- Ordering hazard: `import utils.java_init` sets `JAVA_HOME` for pyserini's JVM. isort puts third-party (`pyserini`) before first-party (`utils`). An unprotected sort moved pyserini above `java_init` in `src/eval/baselines/{answer_filtered_test,evidence_gpt_claude,evidence_gpt_claude_no_reason}.py`, which the guard test below caught.
+- Fix: an exact `# isort: split` marker, with an explanation on the line above, after each of the 4 module-level `import utils.java_init` lines (`verl/trainer/main_ppo.py` and those three scripts). Ruff ignores the marker if text follows it on the same line, so the explanation has to sit on its own line. The `java_init` imports inside `try:` blocks need no marker, because the `try` statement already separates the import blocks.
+- Test (guard): `tests/deepretrieval/core/test_import_order.py`, 18 cases. In every file that imports `utils.java_init`, it must come before any module-level `pyserini` import. The guard passed before the sort, failed on the 3 files after an unprotected sort, and passes with the markers.
+- Verification: no I001 findings left outside `verl/third_party`; `compileall` OK; `560 passed, 16 skipped`; pyright unchanged at 15.
+
+
+### X6 — `DataProto.batch: Optional[TensorDict]`
+- Files: `verl/protocol.py`. `DataProto.batch` and `DataProtoItem.batch` are now `Optional[TensorDict] = None`.
+- Narrowing pattern: one `assert <expr>.batch is not None, '<why it must exist here>'` per function, on the expression the code then uses, placed where the batch must exist. Pyright keeps that narrowing until `data` or `data.batch` is rebound, so the existing `data.batch[...]` lines are unchanged. Asserts are repeated after a rebind.
+- Where `None` legitimately passes through (metrics-only results, `pop(batch_keys=[])`, `select(batch_keys=None)`, `fsdp_ulysses` without a device mesh), the assert sits inside the branch that dereferences the batch.
+- Sites: 42 asserts in 13 production files and 35 in 9 test files (plus 1 more in `main_generation.py` from X7). No suppressions. The two `cast(...)`s inside the non-`None` branch of `protocol.py` (`chunk` → `TensorDictBase`, `torch.cat` → `Tensor`) fix declared-type mismatches, not `None`; both were checked at runtime.
+- Behaviour: every asserted site already crashed on `None` (`TypeError`/`AttributeError`). It now raises an `AssertionError` that says why a batch was expected.
+- `non_tensor_batch` stays `dict`. No production code sets it to `None`, most methods would crash if it were, and `Optional[dict]` would add 40 narrowing sites. The `non_tensor_batch=None` case was removed from `tests/utility/test_tensor_dict_utilities.py::test_len`. The `__len__` guard itself is unchanged.
+- Pyright: 15 → 4, with only the 4 unrelated errors left (fixed in X7).
+
+### X7 — Remaining Pylance problems
+- **`single_controller/ray/base.py`:**
+  - `RayClassWithInitArgs.__call__` overrides `ClassWithInitArgs.__call__()` with placement arguments. It now has a line-scoped `reportIncompatibleMethodOverride` suppression with that reason; nothing calls it through the base type (grepped).
+  - Ruff fixes:
+    - SIM113 (`enumerate` in `extract_pg_from_exist`);
+    - SIM102 (collapsed the nested `if` in `execute_all_async`, which has no `else`);
+    - the B023 false positive, by renaming the inner `func` to `dispatch_to_worker` (`key` is a parameter of `_bind_workers_method_to_parent`, so there is no late binding);
+    - BLE001: `except Exception` narrowed to `(AttributeError, TypeError)`, what `setattr` on a class can raise, chained with `from e`.
+  - Test: `tests/deepretrieval/core/test_ray_base.py`, 3 characterisation tests of `extract_pg_from_exist`, written before the refactor and green before and after.
+- **`trainer/main_generation.py`:**
+  - `RayWorkerGroup` binds `init_model`/`generate_sequences` at runtime. A local `RolloutWorkerGroup` Protocol (those two methods plus `world_size`) describes them, and the worker group is `cast` to it.
+  - `output_text` is initialised to `[]`. It was unbound when no batch ran. It is only the return value of the Hydra `main`, which nothing reads.
+  - `output.batch` is narrowed with the X6 pattern.
+- **`utils/tracking.py`:**
+  - `_flatten_dict` returns `{str(k): v ...}`. Pylance's bundled pandas stubs type `to_dict()` keys as `Hashable`; at runtime they are already the joined str config paths.
+  - Verified with `pandas-stubs` in a scratch venv: the old file reports this `reportReturnType`, the new one doesn't.
+- **CLI/editor parity:** `pandas-stubs<2.4` was added to the `dev` group, so `uv run pyright` sees the same pandas types as Pylance. Still 0 errors.
+- **Spelling:** new `cspell.json` (repo root) with the project's vocabulary. It ignores `.venv`, `uv.lock`, vendored vllm and `code/data`.
+- **Verification:**
+  - **pyright: 0 errors** (with `pandas-stubs`);
+  - `563 passed, 16 skipped`;
+  - `compileall` OK;
+  - `audit_tests.py tests/deepretrieval` clean;
+  - the touched files are ruff-clean apart from a pre-existing B028 at `tracking.py:33`.

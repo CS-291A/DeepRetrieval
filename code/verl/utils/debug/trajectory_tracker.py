@@ -17,14 +17,15 @@ The results will be dump to hdfs for offline comparison.
 Each process will have a client that first move all the tensors to CPU
 """
 
-from verl.utils.hdfs_io import makedirs, copy
-import torch
-import os
-import ray
 import io
+import os
 import tempfile
-
 from collections import deque
+
+import ray
+import torch
+
+from verl.utils.hdfs_io import copy, makedirs
 
 remote_copy = ray.remote(copy)
 

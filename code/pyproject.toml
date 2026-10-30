@@ -64,6 +64,7 @@ dev = [
     "pytest",
     "pyright",
     "ruff",
+    "pandas-stubs<2.4",
 ]
 
 [project.urls]

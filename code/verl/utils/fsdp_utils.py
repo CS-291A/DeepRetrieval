@@ -12,18 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import cast
 import functools
+import itertools
 import json
 import math
-import itertools
 import os
 from contextlib import contextmanager
-from torch.distributed.fsdp.wrap import size_based_auto_wrap_policy, transformer_auto_wrap_policy
-from transformers.trainer_pt_utils import get_module_class_from_name
+from typing import cast
+
 import torch
-from torch import nn
 import torch.distributed as dist
+from torch import nn
+from torch.distributed.fsdp.wrap import (
+    size_based_auto_wrap_policy,
+    transformer_auto_wrap_policy,
+)
+from transformers.trainer_pt_utils import get_module_class_from_name
 
 
 def init_fn(x: torch.nn.Module) -> None:

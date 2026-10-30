@@ -17,23 +17,22 @@ In this test, we instantiate a data parallel worker with 8 GPUs
 
 from typing import Any
 
-from verl.single_controller.base import Worker
-from verl.single_controller.ray import RayWorkerGroup, RayClassWithInitArgs, RayResourcePool
-
-from verl.single_controller.base.decorator import Dispatch, register
-
 import ray
 import ray.cloudpickle
+import tensordict
 import torch
-
+from codetiming import Timer
 from torch import distributed as dist
 
 from verl import DataProto
+from verl.single_controller.base import Worker
+from verl.single_controller.base.decorator import Dispatch, register
+from verl.single_controller.ray import (
+    RayClassWithInitArgs,
+    RayResourcePool,
+    RayWorkerGroup,
+)
 from verl.utils.ray_utils import parallel_put
-
-from codetiming import Timer
-
-import tensordict
 
 
 @ray.remote
@@ -79,7 +78,9 @@ def test_data_transfer():
     for i in range(wg.world_size):
         # consolidate is necessary
         if tensordict.__version__ >= '0.5.0':
-            data_list[i].batch = data_list[i].batch.consolidate()  # pyright: ignore[reportAttributeAccessIssue]  # tensordict 0.5.0 annotates consolidate -> None; it returns the TensorDict
+            batch = data_list[i].batch
+            assert batch is not None
+            data_list[i].batch = batch.consolidate()  # pyright: ignore[reportAttributeAccessIssue]  # tensordict 0.5.0 annotates consolidate -> None; it returns the TensorDict
 
     with Timer(name='ray.pickle', initial_text=True):
         for i in range(wg.world_size):
@@ -105,6 +106,8 @@ def test_data_transfer():
         output_lst = ray.get(output_ref)
 
     for input_data, output_data in zip(data_list, output_lst):
+        assert input_data.batch is not None
+        assert output_data.batch is not None
         for key in input_data.batch.keys():  # pyright: ignore[reportGeneralTypeIssues]  # tensordict 0.5.0 annotates _TensorDictKeysView.__iter__ as Iterable, not Iterator
             assert torch.all(torch.eq(input_data.batch[key] + 1,
                                       output_data.batch[key])), (input_data.batch[key], output_data.batch[key], key)

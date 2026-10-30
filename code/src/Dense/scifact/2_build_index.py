@@ -1,6 +1,7 @@
 import faiss
 import numpy as np
 
+
 def build_faiss_hnsw_index(embedding_path, doc_ids_path, output_index_path, M=32, ef_construction=200):
     """
     Build a FAISS HNSW index for dense retrieval.

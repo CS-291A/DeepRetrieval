@@ -15,25 +15,31 @@
 Implement a multiprocess PPOCritic
 """
 
-from functools import partial
 from collections.abc import Iterable
+from functools import partial
 
 import torch
 import torch.distributed
+from megatron.core import parallel_state as mpu
+from megatron.core.pipeline_parallel import get_forward_backward_func
+from megatron.optimizer import DistributedOptimizer
 from omegaconf import OmegaConf
 from torch import nn
 
 from verl import DataProto
 from verl.trainer.ppo import core_algos
-from verl.workers.critic import BasePPOCritic
-from verl.utils.megatron.pipeline_parallel import (compute_transformers_input_shapes, make_batch_generator)
-from verl.utils.py_functional import append_to_dict
-from verl.utils.torch_functional import masked_mean, broadcast_dict_tensor, split_dict_tensor_into_batches
 from verl.utils.megatron.optimizer_config import OptimizerConfig
-
-from megatron.optimizer import DistributedOptimizer
-from megatron.core import parallel_state as mpu
-from megatron.core.pipeline_parallel import get_forward_backward_func
+from verl.utils.megatron.pipeline_parallel import (
+    compute_transformers_input_shapes,
+    make_batch_generator,
+)
+from verl.utils.py_functional import append_to_dict
+from verl.utils.torch_functional import (
+    broadcast_dict_tensor,
+    masked_mean,
+    split_dict_tensor_into_batches,
+)
+from verl.workers.critic import BasePPOCritic
 
 
 class MegatronPPOCritic(BasePPOCritic):

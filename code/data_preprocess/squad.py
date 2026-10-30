@@ -1,12 +1,12 @@
-import os
-from datasets import Dataset
-from typing import Any, cast
-from collections.abc import Iterable
-from verl.utils.hdfs_io import copy, makedirs
 import argparse
 import json
+import os
+from collections.abc import Iterable
+from typing import Any, cast
 
+from datasets import Dataset
 
+from verl.utils.hdfs_io import copy, makedirs
 
 INSTRUCTION = """
 You are a query rewriting expert. Your task is to create query terms for user query to find relevant literature in a massive corpus.

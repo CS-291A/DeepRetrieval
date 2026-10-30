@@ -13,8 +13,9 @@
 # limitations under the License.
 
 
-from .worker import DistRankInfo, DistGlobalInfo
 from verl.single_controller.base import ResourcePool, WorkerGroup
+
+from .worker import DistGlobalInfo, DistRankInfo
 
 
 class MegatronWorkerGroup(WorkerGroup):

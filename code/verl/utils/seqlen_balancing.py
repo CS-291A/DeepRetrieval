@@ -12,13 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import heapq
 
 import torch
-from torch import distributed as dist
-
 from tensordict import TensorDictBase
-import copy
+from torch import distributed as dist
 
 
 def karmarkar_karp(seqlen_list: list[int], k_partitions: int, equal_size: bool):

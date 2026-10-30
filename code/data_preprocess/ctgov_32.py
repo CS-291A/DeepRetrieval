@@ -1,12 +1,12 @@
-import os
-from datasets import Dataset
-from typing import Any, cast
-from collections.abc import Iterable
-from verl.utils.hdfs_io import copy, makedirs
 import argparse
 import json
+import os
+from collections.abc import Iterable
+from typing import Any, cast
 
+from datasets import Dataset
 
+from verl.utils.hdfs_io import copy, makedirs
 
 INSTRUCTION = """
 The Assistant is a clinical specialist. He is conducting research and doing a medical literature review. His task is to create query terms for a search URL to find relevant literature on PubMed or ClinicalTrials.gov.

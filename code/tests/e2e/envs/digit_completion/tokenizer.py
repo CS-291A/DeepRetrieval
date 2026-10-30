@@ -20,8 +20,8 @@ This is heavily inspired from CanineTokenizer in transformers package.
 
 import json
 import os
-from pathlib import Path
 from collections.abc import Sequence
+from pathlib import Path
 
 from transformers.tokenization_utils import AddedToken, PreTrainedTokenizer
 

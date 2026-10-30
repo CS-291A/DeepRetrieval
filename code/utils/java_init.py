@@ -1,6 +1,7 @@
 import os
 import sys
 
+
 def get_jdk_path():
     # Try to get home directory from environment or use a fallback
     home = os.environ.get('HOME')

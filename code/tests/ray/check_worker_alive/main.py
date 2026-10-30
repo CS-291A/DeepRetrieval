@@ -12,16 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import time
-import sys
 import os
+import sys
+import time
 from typing import Any
 
 import ray
 
-from verl.single_controller.ray.base import RayResourcePool, RayClassWithInitArgs, RayWorkerGroup
+from verl.single_controller.base.decorator import Dispatch, register
 from verl.single_controller.base.worker import Worker
-from verl.single_controller.base.decorator import register, Dispatch
+from verl.single_controller.ray.base import (
+    RayClassWithInitArgs,
+    RayResourcePool,
+    RayWorkerGroup,
+)
 
 
 @ray.remote

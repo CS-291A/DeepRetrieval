@@ -19,22 +19,25 @@ import itertools
 import torch
 import torch.distributed
 from torch import nn
-from torch.optim.optimizer import Optimizer
-
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+from torch.optim.optimizer import Optimizer
 
 from verl import DataProto
 from verl.trainer.ppo import core_algos
-from verl.workers.critic import BasePPOCritic
-from verl.utils.py_functional import append_to_dict
-from verl.utils.torch_functional import masked_mean, scalars_to_floats
-from verl.utils.ulysses import ulysses_pad_and_slice_inputs, gather_outpus_and_unpad
-from verl.utils.seqlen_balancing import rearrange_micro_batches, get_reverse_idx
-
 from verl.utils.import_utils import flash_attn_import_error
+from verl.utils.py_functional import append_to_dict
+from verl.utils.seqlen_balancing import get_reverse_idx, rearrange_micro_batches
+from verl.utils.torch_functional import masked_mean, scalars_to_floats
+from verl.utils.ulysses import gather_outpus_and_unpad, ulysses_pad_and_slice_inputs
+from verl.workers.critic import BasePPOCritic
 
 try:
-    from flash_attn.bert_padding import pad_input, unpad_input, rearrange, index_first_axis  # pyright: ignore[reportMissingImports]  # flash-attn is Linux/CUDA-only (gpu extra)
+    from flash_attn.bert_padding import (  # pyright: ignore[reportMissingImports]  # flash-attn is Linux/CUDA-only (gpu extra)
+        index_first_axis,
+        pad_input,
+        rearrange,
+        unpad_input,
+    )
 except ImportError as e:
     raise flash_attn_import_error('DataParallelPPOCritic') from e
 
@@ -122,6 +125,7 @@ class DataParallelPPOCritic(BasePPOCritic):
         micro_batch_size = data.meta_info['micro_batch_size']
         select_keys = ['responses', 'input_ids', 'attention_mask', 'position_ids']
         batch = data.select(batch_keys=select_keys).batch
+        assert batch is not None, 'select with batch_keys keeps the tensor batch'
         use_dynamic_bsz = data.meta_info['use_dynamic_bsz']
 
         indices: list[list[int]] = []  # only read when use_dynamic_bsz
@@ -138,6 +142,7 @@ class DataParallelPPOCritic(BasePPOCritic):
                 values = self._forward_micro_batch(micro_batch)
             values_lst.append(values)
         values = torch.concat(values_lst, dim=0)
+        assert data.batch is not None, 'compute_values input carries the rollout tensors'
         responses = data.batch['responses']
         attention_mask = data.batch['attention_mask']
         response_length = responses.size(1)
@@ -158,6 +163,7 @@ class DataParallelPPOCritic(BasePPOCritic):
 
         select_keys = ['input_ids', 'responses', 'attention_mask', 'position_ids', 'values', 'returns']
         batch = data.select(batch_keys=select_keys).batch
+        assert batch is not None, 'select with batch_keys keeps the tensor batch'
         # Split to make minibatch iterator for updating the actor
         # See PPO paper for details. https://arxiv.org/abs/1707.06347
         dataloader = batch.split(self.config.ppo_mini_batch_size)

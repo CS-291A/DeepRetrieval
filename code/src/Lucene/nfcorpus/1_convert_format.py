@@ -1,6 +1,7 @@
 import json
 import os
 
+
 def convert_jsonl_for_pyserini(input_file, output_file):
     """Convert JSONL data to Pyserini-compatible format with a structured 'contents' field"""
     docs = []

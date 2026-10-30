@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import os
+
 import torch
 from torch.utils.data import DataLoader
 
@@ -26,8 +27,8 @@ def get_gsm8k_data():
 
 
 def test_rl_dataset():
-    from verl.utils.dataset.rl_dataset import RLHFDataset, collate_fn
     from verl.utils import hf_tokenizer
+    from verl.utils.dataset.rl_dataset import RLHFDataset, collate_fn
     tokenizer = hf_tokenizer('deepseek-ai/deepseek-coder-1.3b-instruct')
     local_path = get_gsm8k_data()
     dataset = RLHFDataset(parquet_files=local_path, tokenizer=tokenizer, prompt_key='prompt', max_prompt_length=256)
@@ -50,6 +51,7 @@ def test_rl_dataset():
     data_proto = DataProto.from_dict(tensors=tensors, non_tensors=non_tensors)
     assert len(data_proto) == 16
     # prompts are left-padded to max_prompt_length
+    assert data_proto.batch is not None
     assert data_proto.batch['input_ids'].shape == (16, 256)
 
     data = dataset[0]['input_ids']

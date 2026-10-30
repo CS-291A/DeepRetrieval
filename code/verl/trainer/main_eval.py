@@ -18,9 +18,10 @@ The input is a parquet file that contains N generated sequences and (optional) t
 """
 
 import hydra
-from verl.utils.fs import copy_local_path_from_hdfs
-import pandas as pd
 import numpy as np
+import pandas as pd
+
+from verl.utils.fs import copy_local_path_from_hdfs
 
 
 def select_reward_fn(data_source):

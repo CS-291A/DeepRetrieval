@@ -27,6 +27,7 @@ from torch import nn
 
 from verl import DataProto
 from verl.utils.torch_functional import logprobs_from_logits
+
 from ..base import BaseRollout
 
 __all__ = ['NaiveRollout']
@@ -50,6 +51,7 @@ class NaiveRollout(BaseRollout):
     @torch.no_grad()
     def generate_sequences(self, prompts: DataProto) -> DataProto:
         """Generate sequences"""
+        assert prompts.batch is not None, 'rollout prompts carry input_ids/attention_mask/position_ids'
         idx = prompts.batch['input_ids']  # (bs, prompt_length)
         attention_mask = prompts.batch['attention_mask']  # left-padded attention_mask
         position_ids = prompts.batch['position_ids']

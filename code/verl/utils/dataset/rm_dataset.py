@@ -15,7 +15,6 @@
 import os
 
 import pandas as pd
-
 import torch
 from torch.utils.data import Dataset
 
@@ -68,7 +67,7 @@ class RMDataset(Dataset):
     def _download(self):
 
         def _download_files():
-            from verl.utils.fs import copy, _is_non_local
+            from verl.utils.fs import _is_non_local, copy
             os.makedirs(self.cache_dir, exist_ok=True)
             assert os.path.exists(self.cache_dir)
             for i, parquet_file in enumerate(self.parquet_files):

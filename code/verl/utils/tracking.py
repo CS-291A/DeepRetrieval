@@ -37,8 +37,9 @@ class Tracking:
         self.logger = {}
 
         if 'tracking' in default_backend or 'wandb' in default_backend:
-            import wandb
             import os
+
+            import wandb
             WANDB_API_KEY = os.environ.get("WANDB_API_KEY", None)
             if WANDB_API_KEY:
                 wandb.login(key=WANDB_API_KEY)
@@ -102,4 +103,5 @@ def _flatten_dict(raw: dict[str, Any], *, sep: str) -> dict[str, Any]:
     import pandas as pd
     ans = pd.json_normalize(raw, sep=sep).to_dict(orient='records')[0]
     assert isinstance(ans, dict)
-    return ans
+    # json_normalize keys are the joined (str) config paths; pandas types them as Hashable.
+    return {str(k): v for k, v in ans.items()}

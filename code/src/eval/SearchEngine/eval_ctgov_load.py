@@ -1,5 +1,5 @@
-import sys
 import os
+import sys
 import time
 
 # Debug: Print current directory and Python path
@@ -10,13 +10,13 @@ sys.path.insert(0, project_root)
 
 
 import argparse
-from tqdm import tqdm
 import json
 from collections import deque
 from threading import Lock
 
-from verl.utils.apis.ctgov import CTGovAPI
+from tqdm import tqdm
 
+from verl.utils.apis.ctgov import CTGovAPI
 
 # Add these at the top with other global variables
 _request_times = deque(maxlen=20)  # Track last 20 requests
