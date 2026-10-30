@@ -2,7 +2,6 @@ import json
 import sys
 import os
 from tqdm import tqdm
-import pdb
 sys.path.append('./')
 
 from src.Dense.scifact.search import FaissHNSWSearcher
@@ -53,6 +52,8 @@ if __name__ == '__main__':
         queries = [item['query'] for item in batch]
         targets = {item['query']: item['target'] for item in batch}
         
+        if search_system is None:
+            raise FileNotFoundError("Faiss index not found for scifact")
         results = search_system.batch_search(queries, top_k=10, threads=16)
         for idx, query in enumerate(queries):
             retrieved = [result[0] for result in results[idx]]

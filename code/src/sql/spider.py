@@ -8,7 +8,7 @@ class SpiderDatabaseSearcher:
     def __init__(self):
         self.timeout = 30
 
-    def search(self, sql_query: str, db_path: str, db_id: str=None):
+    def search(self, sql_query: str, db_path: str, db_id: str | None=None):
         try:
             results = func_timeout(self.timeout, self._search, args=(sql_query, db_path, db_id))
 
@@ -18,7 +18,7 @@ class SpiderDatabaseSearcher:
 
         return results
 
-    def _search(self, sql_query: str, db_path: str, db_id: str=None):
+    def _search(self, sql_query: str, db_path: str, db_id: str | None=None):
         # Connect to the database
         with closing(sqlite3.connect(db_path)) as conn:
             cursor = conn.cursor()

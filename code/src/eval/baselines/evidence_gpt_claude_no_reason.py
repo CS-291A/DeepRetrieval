@@ -2,7 +2,7 @@ import sys
 import os
 import concurrent.futures
 import time
-from functools import partial
+from typing import Any
 
 # Debug: Print current directory and Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -16,12 +16,11 @@ from tqdm import tqdm
 import json
 import re
 
-import utils.java_init
+import utils.java_init  # noqa: F401  (imported for its side effect: sets JAVA_HOME)
 
 # Add these at the top with other global variables
 from pyserini.search.lucene import LuceneSearcher
 from pyserini.eval.evaluate_dpr_retrieval import has_answers, SimpleTokenizer
-from tqdm import tqdm
 from src.utils.gpt_azure import gpt_chat_4o, gpt_chat_35_msg
 from src.utils.claude_api import get_claude_response
 
@@ -34,6 +33,8 @@ def get_searcher():
     global _searcher
     if _searcher is None:
         _searcher = LuceneSearcher.from_prebuilt_index('wikipedia-dpr-100w')
+        if _searcher is None:  # pyserini prints the reason and returns None
+            raise RuntimeError("pyserini could not load the prebuilt index 'wikipedia-dpr-100w'")
     return _searcher
 
 
@@ -45,7 +46,7 @@ def extract_solution(response):
     if matches:
         return matches[-1].strip() # Return the last matched answer
     else:
-        print(f"Warning: No answer tag found in the response. Using the response itself as the answer.")
+        print("Warning: No answer tag found in the response. Using the response itself as the answer.")
         return response
     
     
@@ -126,8 +127,7 @@ def save_metrics(metrics, model_name, dataset_name):
     os.makedirs(output_dir, exist_ok=True)
     output_file = os.path.join(output_dir, f"{dataset_name}_{model_name}_metrics.txt")
     with open(output_file, 'w') as f:
-        for metric_name, value in metrics.items():
-            f.write(f"{metric_name}: {value}\n")
+        f.writelines(f"{metric_name}: {value}\n" for metric_name, value in metrics.items())
     print(f"Saved metrics to {output_file}")
 
 def evaluate_model(data_path, model_name, dataset_name, batch_size=8, max_retries=5):
@@ -167,7 +167,7 @@ def evaluate_model(data_path, model_name, dataset_name, batch_size=8, max_retrie
                 time.sleep(wait_time)
                 return process_single_prompt_with_retry(prompt, retry_count + 1)
             else:
-                print(f"Failed after {max_retries} attempts. Error: {str(e)}")
+                print(f"Failed after {max_retries} attempts. Error: {e!s}")
                 return None
 
     for batch_start in tqdm(range(0, len(inputs), batch_size), desc="Evaluating"):
@@ -183,7 +183,7 @@ def evaluate_model(data_path, model_name, dataset_name, batch_size=8, max_retrie
                 futures.append((idx, future))
             
             # Initialize response list with None values
-            responses = [None] * len(batch_inputs)
+            responses: list[Any] = [None] * len(batch_inputs)
             
             # Process futures as they complete while maintaining original order
             for idx, future in futures:
@@ -195,13 +195,14 @@ def evaluate_model(data_path, model_name, dataset_name, batch_size=8, max_retrie
                         responses[idx] = None
                         error_count += 1
                 except Exception as e:
-                    print(f"Unexpected error processing prompt at index {idx}: {str(e)}")
+                    print(f"Unexpected error processing prompt at index {idx}: {e!s}")
                     responses[idx] = None
                     error_count += 1
             
         all_responses.extend(responses)
         
         for i, response in enumerate(responses):
+            generated_text = response  # bound for the except handler
             try:
                 if response is None:
                     # Skip processing for failed responses
@@ -352,7 +353,7 @@ def main():
                 print(f"{metric_name}: {value}")
             return dataset_name, model_name, metrics
         except Exception as e:
-            print(f"Error evaluating {model_name} on {dataset_name}: {str(e)}")
+            print(f"Error evaluating {model_name} on {dataset_name}: {e!s}")
             return dataset_name, model_name, None
 
     for dataset_name, data_path in datasets.items():

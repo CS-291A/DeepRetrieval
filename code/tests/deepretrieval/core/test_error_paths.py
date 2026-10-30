@@ -1,5 +1,6 @@
 """Error paths in verl/ (audit items A7, B16, B19, C22, E34, E35, F40)."""
 import importlib
+from typing import Any
 
 import pytest
 import ray.util
@@ -39,13 +40,13 @@ class _NeverAliveGroup(WorkerGroup):
         super().__init__(resource_pool=None)
         self._workers = ["w0", "w1"]
 
-    def _is_worker_alive(self, worker):
+    def _is_worker_alive(self, worker) -> bool:
         return False
 
 
 class _AliveGroup(_NeverAliveGroup):
 
-    def _is_worker_alive(self, worker):
+    def _is_worker_alive(self, worker) -> bool:
         return True
 
 
@@ -120,6 +121,7 @@ class _BrokenWorker:
 
 
 class _RecordingGroup(WorkerGroup):
+    registered: str  # set at runtime by _bind_worker_method from _func_generator's return value
 
     def __init__(self):
         super().__init__(resource_pool=None)
@@ -148,7 +150,7 @@ def test_worker_group_binding_propagates_unexpected_errors():
 
 
 def test_colocated_binding_skips_properties_and_attributes():
-    parent = type("Parent", (), {})
+    parent: Any = type("Parent", (), {})  # methods are bound onto it at runtime
 
     _bind_workers_method_to_parent(parent, "actor", _UserWorker)
 

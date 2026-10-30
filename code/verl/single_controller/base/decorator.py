@@ -14,7 +14,6 @@
 
 from enum import Enum
 from functools import wraps
-from typing import Dict, List, Tuple
 from types import FunctionType
 from verl.protocol import DataProtoFuture
 
@@ -81,7 +80,7 @@ def dispatch_megatron_compute(worker_group, *args, **kwargs):
 
     all_args = []
     for arg in args:
-        assert isinstance(arg, (Tuple, List)) and len(arg) == worker_group.dp_size
+        assert isinstance(arg, (tuple, list)) and len(arg) == worker_group.dp_size
         transformed_args = []
         for i in range(worker_group.world_size):
             local_dp_rank = worker_group.get_megatron_rank_info(rank=i).dp_rank
@@ -91,7 +90,7 @@ def dispatch_megatron_compute(worker_group, *args, **kwargs):
 
     all_kwargs = {}
     for k, v in kwargs.items():
-        assert isinstance(v, (Tuple, List)) and len(v) == worker_group.dp_size
+        assert isinstance(v, (tuple, list)) and len(v) == worker_group.dp_size
         transformed_v = []
         for i in range(worker_group.world_size):
             local_dp_rank = worker_group.get_megatron_rank_info(rank=i).dp_rank
@@ -126,7 +125,7 @@ def dispatch_megatron_compute_data_proto(worker_group, *args, **kwargs):
     return dispatch_megatron_compute(worker_group, *splitted_args, **splitted_kwargs)
 
 
-def _concat_data_proto_or_future(output: List):
+def _concat_data_proto_or_future(output: list):
     from verl.protocol import DataProto, DataProtoFuture
     import ray
 
@@ -172,7 +171,7 @@ def dispatch_megatron_pp_as_dp(worker_group, *args, **kwargs):
 
     all_args = []
     for arg in args:
-        assert isinstance(arg, (List, Tuple)) and len(arg) == pp_dp_size
+        assert isinstance(arg, (list, tuple)) and len(arg) == pp_dp_size
         transformed_args = []
         for i in range(worker_group.world_size):
             local_dp_rank = worker_group.get_megatron_rank_info(rank=i).dp_rank
@@ -194,7 +193,7 @@ def dispatch_megatron_pp_as_dp(worker_group, *args, **kwargs):
 
     all_kwargs = {}
     for k, v in kwargs.items():
-        assert isinstance(v, (List, Tuple)) and len(v) == pp_dp_size, f'expect len(v)=={pp_dp_size}, got {len(v)}'
+        assert isinstance(v, (list, tuple)) and len(v) == pp_dp_size, f'expect len(v)=={pp_dp_size}, got {len(v)}'
         transformed_v = []
         for i in range(worker_group.world_size):
             local_dp_rank = worker_group.get_megatron_rank_info(rank=i).dp_rank
@@ -244,7 +243,6 @@ def dispatch_megatron_pp_as_dp_data_proto(worker_group, *args, **kwargs):
 
 
 def collect_megatron_pp_as_dp_data_proto(worker_group, output):
-    from verl.protocol import DataProto
     from verl.single_controller.base.megatron.worker_group import MegatronWorkerGroup
     assert isinstance(worker_group, MegatronWorkerGroup)
 
@@ -256,9 +254,9 @@ def dispatch_dp_compute(worker_group, *args, **kwargs):
     from verl.single_controller.base.worker_group import WorkerGroup
     assert isinstance(worker_group, WorkerGroup)
     for arg in args:
-        assert isinstance(arg, (Tuple, List)) and len(arg) == worker_group.world_size
+        assert isinstance(arg, (tuple, list)) and len(arg) == worker_group.world_size
     for k, v in kwargs.items():
-        assert isinstance(v, (Tuple, List)) and len(v) == worker_group.world_size
+        assert isinstance(v, (tuple, list)) and len(v) == worker_group.world_size
     return args, kwargs
 
 
@@ -365,8 +363,8 @@ def get_predefined_execute_fn(execute_mode):
 
 def _check_dispatch_mode(dispatch_mode):
     assert isinstance(dispatch_mode,
-                      (Dispatch, Dict)), f'dispatch_mode must be a Dispatch or a Dict. Got {dispatch_mode}'
-    if isinstance(dispatch_mode, Dict):
+                      (Dispatch, dict)), f'dispatch_mode must be a Dispatch or a Dict. Got {dispatch_mode}'
+    if isinstance(dispatch_mode, dict):
         necessary_keys = ['dispatch_fn', 'collect_fn']
         for key in necessary_keys:
             assert key in dispatch_mode, f'key {key} should be in dispatch_mode if it is a dictionary'
@@ -391,7 +389,7 @@ def _materialize_futures(*args, **kwargs):
     return new_args, kwargs
 
 
-def register(dispatch_mode=Dispatch.ALL_TO_ALL, execute_mode=Execute.ALL, blocking=True, materialize_futures=True):
+def register(dispatch_mode: Dispatch | dict = Dispatch.ALL_TO_ALL, execute_mode=Execute.ALL, blocking=True, materialize_futures=True):
     _check_dispatch_mode(dispatch_mode=dispatch_mode)
     _check_execute_mode(execute_mode=execute_mode)
 

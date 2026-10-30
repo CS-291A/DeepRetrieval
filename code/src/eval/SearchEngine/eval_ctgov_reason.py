@@ -2,7 +2,6 @@ import sys
 import os
 import concurrent.futures
 import time
-from functools import partial
 
 
 TRIAL_DETAILED_PROMPT = """You are a clinical specialist conducting research and performing a medical literature review. The research is defined by the following PICO elements:
@@ -43,18 +42,16 @@ Your output should be in the following JSON format:
 
 # Debug: Print current directory and Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(os.path.dirname(current_dir))  # 
+project_root = os.path.dirname(os.path.dirname(current_dir))
 # Add the project root to Python path
-sys.path.insert(0, project_root)  # 
+sys.path.insert(0, project_root)
 
 
 import argparse
-import pandas as pd
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from tqdm import tqdm
 import json
-import re
 from collections import deque
 from threading import Lock
 
@@ -146,6 +143,8 @@ def llm_query_generation(P, I, C, O, llm):
         ))
     elif "mistral" in llm.lower():
         init_mistral()  # Initialize if not already done
+        if mistral_tokenizer is None or mistral_model is None:
+            raise RuntimeError("init_mistral() did not load the Mistral tokenizer and model")
         
         prompt = TRIAL_DETAILED_PROMPT.format(P=P, I=I, C=C, O=O)
         inputs = mistral_tokenizer(f"<s>[INST] {prompt} [/INST]", return_tensors="pt").to(mistral_model.device)
@@ -173,6 +172,8 @@ def llm_query_generation(P, I, C, O, llm):
                 C=C,
                 O=O
             ))
+        else:
+            raise ValueError(f"Unknown GPT model: {llm}")
     else:
         raise ValueError(f"Unknown LLM: {llm}")
     
@@ -201,7 +202,7 @@ def process_single_llm_call_with_retry(P, I, C, O, llm, max_retries=3):
                 print(f"LLM call failed. Retrying in {wait_time} seconds... (Attempt {retry_count}/{max_retries})")
                 time.sleep(wait_time)
             else:
-                print(f"Failed after {max_retries} attempts. Error: {str(e)}")
+                print(f"Failed after {max_retries} attempts. Error: {e!s}")
                 return None, None
 
 def process_batch(batch_data, search_api, llm):
@@ -225,7 +226,7 @@ def process_batch(batch_data, search_api, llm):
             futures.append((idx, future))
         
         # Initialize results list with None values
-        llm_results = [None] * len(batch_data)
+        llm_results: list[tuple | None] = [None] * len(batch_data)
         
         # Process futures as they complete while maintaining original order
         for idx, future in futures:
@@ -234,7 +235,7 @@ def process_batch(batch_data, search_api, llm):
                 if query is not None:
                     llm_results[idx] = (query, llm_response, batch_data[idx]['pub_date'], batch_data[idx]['trial_nctids'])
             except Exception as e:
-                print(f"Unexpected error processing LLM call at index {idx}: {str(e)}")
+                print(f"Unexpected error processing LLM call at index {idx}: {e!s}")
                 llm_results[idx] = None
     
     # Process search queries sequentially to respect rate limits
@@ -252,7 +253,7 @@ def process_batch(batch_data, search_api, llm):
             recall = len(set(nctid_list) & set(ground_truth)) / len(ground_truth)
             batch_recalls.append(recall)
         except Exception as e:
-            print(f"Error in search query: {str(e)}")
+            print(f"Error in search query: {e!s}")
             batch_recalls.append(0)
     
     return batch_responses, batch_recalls

@@ -13,13 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Pretrain utilities."""
-from typing import Any, Dict
-import time
+from typing import Any
 from omegaconf import DictConfig
 from verl.utils.torch_dtypes import PrecisionType
 from verl.utils.memory_buffer import build_memory_reference_from_module
 import torch
-import torch.nn as nn
+from torch import nn
 import torch.nn.functional as F
 
 from megatron.core import mpu, tensor_parallel
@@ -85,9 +84,7 @@ def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap
     # Print number of parameters.
     if mpu.get_data_parallel_rank() == 0:
         print(' > number of parameters on (tensor, pipeline) '
-              'model parallel rank ({}, {}): {}'.format(
-                  mpu.get_tensor_model_parallel_rank(), mpu.get_pipeline_model_parallel_rank(),
-                  sum([sum([p.nelement() for p in model_module.parameters()]) for model_module in model])),
+              f'model parallel rank ({mpu.get_tensor_model_parallel_rank()}, {mpu.get_pipeline_model_parallel_rank()}): {sum([sum([p.nelement() for p in model_module.parameters()]) for model_module in model])}',
               flush=True)
 
     # GPU allocation.
@@ -182,7 +179,7 @@ def convert_config(hf_config: PretrainedConfig, megatron_config) -> TransformerC
 from verl.utils.megatron.optimizer_config import OptimizerConfig
 
 
-def init_megatron_optim_config(optim_config: Dict) -> OptimizerConfig:
+def init_megatron_optim_config(optim_config: dict) -> OptimizerConfig:
     config = OptimizerConfig(
         optimizer='adam',
         lr=optim_config.get('lr'),

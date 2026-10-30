@@ -1,0 +1,28 @@
+{
+  // Shared by Pylance (workspace root = repo root) and `uv run pyright` from code/ or the repo root.
+  // Pylance ignores venvPath/venv and uses the editor's selected interpreter: select code/.venv/bin/python.
+  "include": ["code"],
+  "exclude": [
+    "**/.venv",
+    "**/__pycache__",
+    // Vendored, patched vLLM copies (0.3.1-0.6.3). They need the matching vllm build, which is Linux/CUDA-only.
+    "code/verl/third_party/vllm",
+    // Megatron-LM strategy from upstream verl: megatron/apex are not installable from this lock and
+    // DeepRetrieval trains with FSDP only (actor.strategy=fsdp in every scripts/train/*.sh).
+    "code/verl/models/llama/megatron",
+    "code/verl/utils/megatron",
+    "code/verl/utils/megatron_utils.py",
+    "code/verl/workers/megatron_workers.py",
+    "code/verl/workers/actor/megatron_actor.py",
+    "code/verl/workers/critic/megatron_critic.py",
+    "code/verl/workers/reward_model/megatron",
+    "code/verl/workers/sharding_manager/megatron_vllm.py"
+  ],
+  "venvPath": "code",
+  "venv": ".venv",
+  "pythonVersion": "3.10",
+  "executionEnvironments": [
+    // Scripts and reward code import `src.*`, `utils.*` and `verl.*` relative to code/.
+    { "root": "code", "extraPaths": ["code"] }
+  ]
+}

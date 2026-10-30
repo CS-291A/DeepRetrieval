@@ -1,6 +1,5 @@
 import re
 import random
-import numpy as np
 import json
 import logging
 import sys
@@ -114,6 +113,7 @@ def check_json_format(json_str, do_print=False):
 
 def retriver_items(query, top_k=3000, threads=16):
     """Retrieve items from the search system."""
+    assert search_system is not None, "calculate_answer_score rejects a missing index first"
     results = search_system.batch_search([query], top_k=top_k, threads=threads)
     return results
     
@@ -173,7 +173,7 @@ def compute_score(solution_str, ground_truth, data_source, format_reward=0.1, an
     #     print(f"Format score: {format_score}")
     
     if do_print:
-        print(f"--------------------------------")
+        print("--------------------------------")
         print(f"Solution string: {solution_str}")
         print(f"Target: {label} |")
     
@@ -196,7 +196,7 @@ def compute_score(solution_str, ground_truth, data_source, format_reward=0.1, an
     
     if do_print:
         print("\n" + "-"*80)
-        print(f" Final Score ".center(80, '-'))
+        print(" Final Score ".center(80, '-'))
         print(f"  Format: {format_score}")
         print(f"  Answer: {answer_score}")
         print(f"  Total: {total_score}")
@@ -208,6 +208,6 @@ def compute_score(solution_str, ground_truth, data_source, format_reward=0.1, an
 if __name__ == '__main__':
     solution_str = """<|im_start|>assistant:  <answer>{"query": "Microstructural development of human"}</answer>
 """
-    ground_truth = {'target': '4983'}
-    scores = compute_score(solution_str, ground_truth)
+    ground_truth = {'target': ['4983'], 'score': [1]}
+    scores = compute_score(solution_str, ground_truth, data_source='msmarco_beir')
     print(scores)

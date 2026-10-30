@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
-from dataclasses import dataclass
 from verl.single_controller.base.worker import Worker, DistRankInfo, DistGlobalInfo
 
 
@@ -23,7 +21,7 @@ class MegatronWorker(Worker):
         super().__init__(cuda_visible_devices)
 
     def get_megatron_global_info(self):
-        from megatron.core import parallel_state as mpu
+        from megatron.core import parallel_state as mpu  # pyright: ignore[reportMissingImports]  # megatron is Linux/CUDA-only, not in the lock
         tp_size = mpu.get_tensor_model_parallel_world_size()
         dp_size = mpu.get_data_parallel_world_size()
         pp_size = mpu.get_pipeline_model_parallel_world_size()
@@ -31,7 +29,7 @@ class MegatronWorker(Worker):
         return info
 
     def get_megatron_rank_info(self):
-        from megatron.core import parallel_state as mpu
+        from megatron.core import parallel_state as mpu  # pyright: ignore[reportMissingImports]  # megatron is Linux/CUDA-only, not in the lock
         tp_rank = mpu.get_tensor_model_parallel_rank()
         dp_rank = mpu.get_data_parallel_rank()
         pp_rank = mpu.get_pipeline_model_parallel_rank()

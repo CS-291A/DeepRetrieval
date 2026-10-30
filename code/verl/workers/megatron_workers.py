@@ -17,10 +17,9 @@ The main entry point to run the PPO algorithm
 
 import os
 import logging
-import ray
 import torch
 import torch.distributed
-import torch.nn as nn
+from torch import nn
 from omegaconf import DictConfig
 from verl.single_controller.base.megatron.worker import MegatronWorker
 from verl.workers.actor.megatron_actor import MegatronPPOActor
@@ -131,7 +130,7 @@ class ActorRolloutRefWorker(MegatronWorker):
         from megatron.core.models.gpt.gpt_model import ModelType
         from verl.utils.model import print_model_size, update_model_config
         from verl.utils.megatron_utils import get_model, init_megatron_optim_config
-        from transformers import AutoModelForCausalLM, AutoTokenizer, AutoConfig
+        from transformers import AutoConfig
 
         # Step 1: initialize the tokenizer
         local_path = copy_local_path_from_hdfs(model_path)
@@ -192,7 +191,7 @@ class ActorRolloutRefWorker(MegatronWorker):
 
             if self.config.ref.load_weight:  # should align with the actor:
                 assert self.config.actor.load_weight == self.config.ref.load_weight
-                print(f'load ref weight start')
+                print('load ref weight start')
                 load_megatron_model_weights(self.config,
                                             actor_model_config,
                                             ref_module,
@@ -402,7 +401,6 @@ class ActorRolloutRefWorker(MegatronWorker):
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def save_checkpoint(self, checkpoint_path):
         assert self._is_actor
-        pass
 
 
 class CriticWorker(MegatronWorker):
@@ -452,8 +450,8 @@ class CriticWorker(MegatronWorker):
         from megatron.core.models.gpt.gpt_model import ModelType
         from verl.utils.model import print_model_size, update_model_config
         from verl.utils.megatron.optimizer import get_megatron_optimizer
-        from verl.utils.megatron_utils import get_model, init_megatron_optim_config, init_model_parallel_config
-        from transformers import AutoModelForCausalLM, AutoTokenizer, AutoConfig
+        from verl.utils.megatron_utils import get_model, init_megatron_optim_config
+        from transformers import AutoConfig
 
         # Step 1: initialize the tokenizer
         local_path = copy_local_path_from_hdfs(model_path)
@@ -613,9 +611,9 @@ class RewardModelWorker(MegatronWorker):
 
     def _build_rm_model(self, model_path, megatron_config: ModelParallelConfig, override_model_config):
         from megatron.core.models.gpt.gpt_model import ModelType
-        from verl.utils.model import print_model_size, update_model_config
+        from verl.utils.model import update_model_config
         from verl.utils.megatron_utils import get_model
-        from transformers import AutoModelForCausalLM, AutoTokenizer, AutoConfig
+        from transformers import AutoConfig
 
         # Step 1: initialize the tokenizer
         local_path = copy_local_path_from_hdfs(model_path)
@@ -673,7 +671,6 @@ class RewardModelWorker(MegatronWorker):
         # create critic
         from omegaconf import OmegaConf
         from verl.utils.torch_dtypes import PrecisionType
-        from transformers import AutoTokenizer
 
         if self.config.model.get('external_lib', None) is not None:
             # This is used to import external_lib into the huggingface systems

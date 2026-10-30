@@ -120,12 +120,15 @@ def evaluate_model(model, tokenizer, data_path, device, model_name, save_dir, ba
                 # continue
         
         for i, output in enumerate(output_ids):
+            generated_text = ""  # bound for the except handler even if decoding fails
             try:
                 generated_text = tokenizer.decode(output, skip_special_tokens=True)
                 idx = batch_start + i
                 # convert target from ndarray to list
                 
                 extracted_solution, processed_str = extract_solution(generated_text)
+                if extracted_solution is None:  # no <answer> block: scored as a failed query below
+                    raise ValueError("no <answer> block in the generated text")
                 query = json.loads(extracted_solution)['query']
                 
                 
@@ -181,6 +184,8 @@ def main():
         if os.path.exists('verl/utils/reward_score/apis/pubmed_api.key'):
             api_key = open('verl/utils/reward_score/apis/pubmed_api.key', 'r').read().strip()
             search_api = PubmedAPI(api_key=api_key)
+        else:
+            raise FileNotFoundError(f"PubMed API key not found: {os.path.abspath('verl/utils/reward_score/apis/pubmed_api.key')}")
     elif args.api == "ctgov":
         search_api = CTGovAPI()
     else:

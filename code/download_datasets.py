@@ -1,8 +1,7 @@
 import argparse
 import os
 import logging
-from huggingface_hub import hf_hub_download, snapshot_download, list_repo_files
-import glob
+from huggingface_hub import hf_hub_download, list_repo_files
 from tqdm import tqdm
 
 logging.basicConfig(
@@ -46,7 +45,7 @@ def list_available_files(repo_id, token=None):
         files = list_repo_files(repo_id=repo_id, token=token, repo_type="dataset")
         return files
     except Exception as e:
-        logger.error(f"Error listing files from repository: {str(e)}")
+        logger.error(f"Error listing files from repository: {e!s}")
         logger.info("If this is a public repository, you can ignore token-related errors.")
         return []
 
@@ -103,7 +102,7 @@ def download_files(repo_id, files, output_dir, token=None, verbose=False):
             
             downloaded += 1
         except Exception as e:
-            logger.error(f"Error downloading {file}: {str(e)}")
+            logger.error(f"Error downloading {file}: {e!s}")
             failed += 1
     
     logger.info(f"Downloaded {downloaded} files. {failed} files failed.")
@@ -141,7 +140,7 @@ def download_category(repo_id, category, output_dir, token=None, datasets=None, 
         
         return downloaded
     except Exception as e:
-        logger.error(f"Error downloading category '{category}': {str(e)}")
+        logger.error(f"Error downloading category '{category}': {e!s}")
         return 0
 
 def main():

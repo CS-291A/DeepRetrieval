@@ -18,12 +18,13 @@ Note that we don't combine the main with ray_trainer as ray_trainer is used by o
 import sys
 import os
 import logging
+from collections.abc import Callable
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(os.path.dirname(current_dir))  
 sys.path.insert(0, project_root)  
 
-import utils.java_init
+import utils.java_init  # noqa: F401  (imported for its side effect: sets JAVA_HOME)
 
 from verl import DataProto
 import torch
@@ -37,7 +38,7 @@ logger = logging.getLogger(__name__)
 # README: put the NCBI key at code/verl/utils/reward_score/apis/pubmed_api.key (resolved here, not from the cwd)
 PUBMED_API_KEY_PATH = os.path.join(project_root, 'verl', 'utils', 'reward_score', 'apis', 'pubmed_api.key')
     
-def _select_rm_score_fn(data_source):
+def _select_rm_score_fn(data_source) -> Callable:
 
     if "screening" in data_source:
         from verl.utils.reward_score import screening
@@ -127,14 +128,11 @@ def _select_rm_score_fn(data_source):
         else:
             from verl.utils.reward_score import spider
             return spider.compute_score
-    elif 'wikisql' in data_source:
-        from verl.utils.reward_score import wikisql
-        return wikisql.compute_score
     else:
         raise NotImplementedError(f"No reward function for data_source '{data_source}'")
 
 
-class RewardManager():
+class RewardManager:
     """The reward manager.
     """
 
@@ -159,7 +157,7 @@ class RewardManager():
         """We will expand this function gradually based on the available datasets"""
 
         # If there is rm score, we directly return rm score. Otherwise, we compute via rm_score_fn
-        if 'rm_scores' in data.batch.keys():
+        if 'rm_scores' in data.batch.keys():  # pyright: ignore[reportOperatorIssue]  # tensordict 0.5 types NestedKey as a runtime class, so str keys are rejected by the stub
             return data.batch['rm_scores']
 
         reward_tensor = torch.zeros_like(data.batch['responses'], dtype=torch.float32)
@@ -188,6 +186,8 @@ class RewardManager():
             # select rm_score
             data_source = data_item.non_tensor_batch['data_source']
             
+            compute_score_fn = _select_rm_score_fn(data_source)
+
             if 'pubmed' in data_source or 'ctgov' in data_source or 'pmd_no_reason' in data_source:
                 pub_date = data_item.non_tensor_batch['pub_date']
                 literature_type = 'publication' if ('pubmed' in data_source or 'pmd_no_reason' in data_source) else 'trial'
@@ -197,10 +197,6 @@ class RewardManager():
                     api = self.ctgov_api
                 else:
                     raise ValueError('Invalid literature type.')
-            
-            compute_score_fn = _select_rm_score_fn(data_source)
-
-            if 'pubmed' in data_source or 'ctgov' in data_source or 'pmd_no_reason' in data_source:
                 score = compute_score_fn(solution_str=sequences_str, ground_truth=ground_truth, search_api=api, literature_type=literature_type, pub_date=pub_date)
             elif 'scifact' in data_source or 'fiqa' in data_source or 'nfcorpus' in data_source or 'hotpotqa' in data_source \
                     or 'fever' in data_source or 'msmarco' in data_source:
@@ -208,10 +204,6 @@ class RewardManager():
             elif 'bird' in data_source or 'spider' in data_source:
                 db_path = data_item.non_tensor_batch['extra_info']['db_path']
                 score = compute_score_fn(solution_str=sequences_str, ground_truth=ground_truth, data_source=data_source, db_path=db_path)
-            elif 'wikisql' in data_source:
-                db_path = data_item.non_tensor_batch['extra_info']['db_path']
-                db_id = data_item.non_tensor_batch['extra_info']['db_id']
-                score = compute_score_fn(solution_str=sequences_str, ground_truth=ground_truth, data_source=data_source, db_path=db_path, db_id=db_id)
             else:
                 score = compute_score_fn(solution_str=sequences_str, ground_truth=ground_truth)
             
@@ -251,7 +243,6 @@ def main(config):
 @ray.remote
 def main_task(config):
     from verl.utils.fs import copy_local_path_from_hdfs
-    from transformers import AutoTokenizer
 
     # print initial config
     from pprint import pprint

@@ -13,9 +13,10 @@
 # limitations under the License.
 
 import time
-from typing import Dict, List, Any, Tuple
+from typing import Any, cast
 
 import ray
+import ray.actor
 from ray.util import list_named_actors
 from ray.util.placement_group import placement_group, PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy, NodeAffinitySchedulingStrategy
@@ -49,7 +50,7 @@ def func_generator(self, method_name, dispatch_fn, collect_fn, execute_fn, block
 class RayResourcePool(ResourcePool):
 
     def __init__(self,
-                 process_on_nodes: List[int] = None,
+                 process_on_nodes: list[int] | None = None,
                  use_gpu: bool = True,
                  name_prefix: str = "",
                  max_colocate_count: int = 5,
@@ -68,7 +69,7 @@ class RayResourcePool(ResourcePool):
         pg_name_prefix = name if name else \
             f"{self.name_prefix}verl_group_{'_'.join([str(count) for count in self._store])}:"
         # print(f"pg_name_prefix = {pg_name_prefix}")
-        pg_scheme = [[{
+        pg_scheme: list[list[dict[str, float]]] = [[{
             "CPU": self.max_collocate_count,
             "GPU": 1
         } if self.use_gpu else {
@@ -88,8 +89,8 @@ class RayResourcePool(ResourcePool):
         return pgs
 
 
-def extract_pg_from_exist(resource_pools: Dict[str, RayResourcePool], src_role_names: List[str],
-                          resource_pool: RayResourcePool) -> List:
+def extract_pg_from_exist(resource_pools: dict[str, RayResourcePool], src_role_names: list[str],
+                          resource_pool: RayResourcePool) -> list:
 
     src_pgs = [
         pg for role_name, resource_pool in resource_pools.items() for pg in resource_pool.get_placement_groups()
@@ -99,7 +100,7 @@ def extract_pg_from_exist(resource_pools: Dict[str, RayResourcePool], src_role_n
     sorted_src_pgs = sorted(src_pgs, key=lambda pg: pg.bundle_count, reverse=True)
     sorted_process_on_nodes = sorted([(val, idx) for idx, val in enumerate(resource_pool.store)], reverse=True)
 
-    unsorted_pgs: List[Tuple[int, PlacementGroup]] = []
+    unsorted_pgs: list[tuple[int, PlacementGroup]] = []
     searching_idx = 0
     for request_process, original_idx in sorted_process_on_nodes:
         assert searching_idx < len(sorted_src_pgs), f"no enough nodes for request: searching {searching_idx} th node"
@@ -136,7 +137,7 @@ class RayClassWithInitArgs(ClassWithInitArgs):
     def set_additional_resource(self, additional_resource):
         self._additional_resource = additional_resource
 
-    def update_options(self, options: Dict):
+    def update_options(self, options: dict):
         self._options.update(options)
 
     def __call__(self,
@@ -146,14 +147,14 @@ class RayClassWithInitArgs(ClassWithInitArgs):
                  num_gpus=1,
                  sharing_with=None) -> Any:
         if sharing_with is not None:
-            target_node_id = ray.get(sharing_with.get_node_id.remote())
+            target_node_id = cast(str, ray.get(sharing_with.get_node_id.remote()))
             cuda_visible_devices = ray.get(sharing_with.get_cuda_visible_devices.remote())
             options = {"scheduling_strategy": NodeAffinitySchedulingStrategy(node_id=target_node_id, soft=False)}
             return self.cls.options(**options).remote(*self.args,
                                                       cuda_visible_devices=cuda_visible_devices,
                                                       **self.kwargs)
 
-        options = {
+        options: dict[str, Any] = {
             "scheduling_strategy":
                 PlacementGroupSchedulingStrategy(placement_group=placement_group,
                                                  placement_group_bundle_index=placement_group_bundle_idx)
@@ -176,10 +177,10 @@ class RayClassWithInitArgs(ClassWithInitArgs):
 class RayWorkerGroup(WorkerGroup):
 
     def __init__(self,
-                 resource_pool: RayResourcePool = None,
-                 ray_cls_with_init: RayClassWithInitArgs = None,
+                 resource_pool: RayResourcePool | None = None,
+                 ray_cls_with_init: RayClassWithInitArgs | None = None,
                  bin_pack: bool = True,
-                 name_prefix: str = None,
+                 name_prefix: str | None = None,
                  detached=False,
                  worker_names=None,
                  **kwargs) -> None:
@@ -200,11 +201,11 @@ class RayWorkerGroup(WorkerGroup):
                                           detached=detached)
 
         if ray_cls_with_init is not None:
-            self._bind_worker_method(self.ray_cls_with_init.cls, func_generator)
+            self._bind_worker_method(ray_cls_with_init.cls, func_generator)
 
     def _is_worker_alive(self, worker: ray.actor.ActorHandle):
         worker_state_dict = get_actor(worker._actor_id.hex())
-        return worker_state_dict.get("state", "undefined") == "ALIVE" if worker_state_dict is not None else False
+        return worker_state_dict.get("state", "undefined") == "ALIVE" if worker_state_dict is not None else False  # pyright: ignore[reportAttributeAccessIssue]  # ray's @dataclass wrapper hides StateSchema.get (present at runtime, ray 2.59)
 
     def _init_with_detached_workers(self, worker_names):
         workers = [ray.get_actor(name=name) for name in worker_names]
@@ -272,7 +273,7 @@ class RayWorkerGroup(WorkerGroup):
                             register_center_actor = ray.get_actor(f"{self.name_prefix}_register_center")
                             break
                     assert register_center_actor is not None, f"failed to get register_center_actor: {self.name_prefix}_register_center in {list_named_actors(all_namespaces=True)}"
-                    rank_zero_info = ray.get(register_center_actor.get_rank_zero_info.remote())
+                    rank_zero_info = cast(dict[str, str], ray.get(register_center_actor.get_rank_zero_info.remote()))
                     self._master_addr, self._master_port = rank_zero_info['MASTER_ADDR'], rank_zero_info['MASTER_PORT']
                     # print(f"rank_zero_info: {rank_zero_info}")
                     # print(f"master_addr: {self._master_addr}, master_port: {self._master_port}")
@@ -317,7 +318,7 @@ class RayWorkerGroup(WorkerGroup):
         return new_worker_group_dict
 
     def execute_rank_zero_sync(self, method_name: str, *args, **kwargs):
-        return ray.get(self.execute_all_async(method_name, **args, **kwargs))
+        return ray.get(self.execute_rank_zero_async(method_name, *args, **kwargs))
 
     def execute_rank_zero_async(self, method_name: str, *args, **kwargs):
         remote_call = getattr(self._workers[0], method_name)
@@ -409,7 +410,7 @@ def _bind_workers_method_to_parent(cls, key, user_defined_cls):
                 method_name_with_prefix = key + '_' + method_name
                 setattr(cls, method_name_with_prefix, func)
                 # print(f'Binding {method_name_with_prefix}')
-            except Exception as e:
+            except Exception:
                 raise ValueError(f'Fail to set method_name {method_name}')
 
 
@@ -437,6 +438,8 @@ def create_colocated_worker_cls(class_dict: dict[str, RayClassWithInitArgs]):
         init_args_dict[key] = {'args': cls.args, 'kwargs': cls.kwargs}
 
     assert cls_dict.keys() == init_args_dict.keys()
+
+    assert worker_cls is not None, 'class_dict must contain at least one class'
 
     # TODO: create a class with customizable name
     class WorkerDict(worker_cls):

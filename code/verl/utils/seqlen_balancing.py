@@ -12,17 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Tuple, Callable
 import heapq
 
 import torch
 from torch import distributed as dist
 
-from tensordict import TensorDict
+from tensordict import TensorDictBase
 import copy
 
 
-def karmarkar_karp(seqlen_list: List[int], k_partitions: int, equal_size: bool):
+def karmarkar_karp(seqlen_list: list[int], k_partitions: int, equal_size: bool):
     # see: https://en.wikipedia.org/wiki/Largest_differencing_method
     class Set:
 
@@ -48,7 +47,7 @@ def karmarkar_karp(seqlen_list: List[int], k_partitions: int, equal_size: bool):
 
     class State:
 
-        def __init__(self, items: List[Tuple[int, int]], k: int) -> None:
+        def __init__(self, items: list[tuple[int, int]], k: int) -> None:
             self.k = k
             # sets should always be decreasing order
             self.sets = [Set() for _ in range(k)]
@@ -127,7 +126,7 @@ def karmarkar_karp(seqlen_list: List[int], k_partitions: int, equal_size: bool):
     return partitions
 
 
-def greedy_partition(seqlen_list: List[int], k_partitions: int, equal_size: bool):
+def greedy_partition(seqlen_list: list[int], k_partitions: int, equal_size: bool):
     bias = sum(seqlen_list) + 1 if equal_size else 0
     sorted_seqlen = [(seqlen + bias, i) for i, seqlen in enumerate(seqlen_list)]
     partitions = [[] for _ in range(k_partitions)]
@@ -137,6 +136,7 @@ def greedy_partition(seqlen_list: List[int], k_partitions: int, equal_size: bool
         for j in range(k_partitions):
             if min_idx is None or partition_sums[j] < partition_sums[min_idx]:
                 min_idx = j
+        assert min_idx is not None, 'k_partitions must be positive'
         partitions[min_idx].append(i)
         partition_sums[min_idx] += seqlen
     if equal_size:
@@ -146,7 +146,7 @@ def greedy_partition(seqlen_list: List[int], k_partitions: int, equal_size: bool
     return partitions
 
 
-def get_seqlen_balanced_partitions(seqlen_list: List[int], k_partitions: int, equal_size: bool):
+def get_seqlen_balanced_partitions(seqlen_list: list[int], k_partitions: int, equal_size: bool) -> list[list[int]]:
     """ get order of seq lengths to make partitions balanced, this is
         used in balacing sum of seqlength across dp ranks and microbatches
     Parameters:
@@ -164,10 +164,10 @@ def get_seqlen_balanced_partitions(seqlen_list: List[int], k_partitions: int, eq
     """
     assert len(seqlen_list) >= k_partitions, f"number of items:[{len(seqlen_list)}] < k_partitions:[{k_partitions}]"
 
-    def _check_and_sort_partitions(partitions):
+    def _check_and_sort_partitions(partitions) -> list[list[int]]:
         assert len(partitions) == k_partitions, f"{len(partitions)} != {k_partitions}"
         seen_idx = set()
-        sorted_partitions = [None] * k_partitions
+        sorted_partitions: list[list[int]] = [[] for _ in range(k_partitions)]  # every slot is overwritten below
         for i, partition in enumerate(partitions):
             assert len(partition) > 0, f"the {i}-th partition is empty"
             for idx in partition:
@@ -180,7 +180,7 @@ def get_seqlen_balanced_partitions(seqlen_list: List[int], k_partitions: int, eq
     return _check_and_sort_partitions(partitions)
 
 
-def log_seqlen_unbalance(seqlen_list: List[int], partitions: List[List[int]], prefix):
+def log_seqlen_unbalance(seqlen_list: list[int], partitions: list[list[int]], prefix):
     # add some metrics of seqlen sum on dp ranks
     k_partition = len(partitions)
     # assert len(seqlen_list) % k_partition == 0
@@ -195,6 +195,7 @@ def log_seqlen_unbalance(seqlen_list: List[int], partitions: List[List[int]], pr
         if max_sum_seqlen is None or cur_sum_seqlen > max_sum_seqlen:
             max_sum_seqlen = cur_sum_seqlen
         total_sum_seqlen += cur_sum_seqlen
+    assert min_sum_seqlen is not None and max_sum_seqlen is not None, 'seqlen_list must not be empty'
 
     balanced_sum_seqlen_list = []
     for partition in partitions:
@@ -218,7 +219,7 @@ def ceildiv(a, b):
     return -(a // -b)
 
 
-def rearrange_micro_batches(batch: TensorDict, max_token_len, dp_group=None):
+def rearrange_micro_batches(batch: TensorDictBase, max_token_len, dp_group=None):
     """Split the batch into a list of micro_batches, where the max_token_len is smaller than max_token_len
     and the number of valid tokens in each micro batch is well balanced.
     """
@@ -235,10 +236,10 @@ def rearrange_micro_batches(batch: TensorDict, max_token_len, dp_group=None):
         dist.all_reduce(num_micro_batches, op=dist.ReduceOp.MAX, group=dp_group)
         num_micro_batches = num_micro_batches.cpu().item()
 
-    seq_len_effective = seq_len_effective.tolist()
-    assert num_micro_batches <= len(seq_len_effective)
+    seq_len_effective_list: list[int] = seq_len_effective.tolist()
+    assert num_micro_batches <= len(seq_len_effective_list)
 
-    micro_bsz_idx = get_seqlen_balanced_partitions(seq_len_effective, num_micro_batches, equal_size=False)
+    micro_bsz_idx = get_seqlen_balanced_partitions(seq_len_effective_list, int(num_micro_batches), equal_size=False)
 
     micro_batches = []
 

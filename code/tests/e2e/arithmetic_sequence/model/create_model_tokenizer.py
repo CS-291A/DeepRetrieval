@@ -35,8 +35,10 @@ config = LlamaConfig(vocab_size=(tokenizer.vocab_size + 16 - 1) // 16 * 16,
                      num_attention_heads=4,
                      num_key_value_heads=4,
                      pad_token_id=tokenizer.pad_token_id,
-                     bos_token_id=tokenizer.bos_token_id,
-                     eos_token_id=tokenizer.eos_token_id)
+                     # Special-token ids come from PreTrainedTokenizerBase.__getattr__, typed str | list[str] | None;
+                     # at runtime they are int or None (CharTokenizer has no BOS), which LlamaConfig accepts.
+                     bos_token_id=tokenizer.bos_token_id,  # pyright: ignore[reportArgumentType]  # untyped __getattr__
+                     eos_token_id=tokenizer.eos_token_id)  # pyright: ignore[reportArgumentType]  # untyped __getattr__
 
 model = AutoModelForCausalLM.from_config(config, torch_dtype=torch.bfloat16)
 

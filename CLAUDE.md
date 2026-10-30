@@ -26,10 +26,12 @@ uv sync --extra baselines        # + openai/anthropic/boto3/langchain-*/trl for 
 
 ```bash
 uv run ruff check .
-uv run pyright verl utils src
+uv run pyright                   # uses repo-root pyrightconfig.json (works from code/ or the root)
 uv run pytest tests/sanity tests/utility tests/verl          # CPU-runnable subset
 uv run pytest tests/utility/test_tensor_dict_utilities.py::test_union_tensor_dict   # single test
 ```
+
+Type checking: `pyrightconfig.json` at the repo root is shared by Pylance and the CLI. It excludes the vendored `verl/third_party/vllm` copies and the megatron strategy files (their deps aren't installable from the lock; DeepRetrieval trains with FSDP only). Pylance ignores `venvPath`, so select `code/.venv/bin/python` as the editor interpreter. Linux-only imports (vllm, flash_attn) carry line-scoped `# pyright: ignore[reportMissingImports]` with a reason; use that form, never bare `# type: ignore`.
 
 `tests/conftest.py` makes plain `uv run pytest` work on CPU: test files importing flash_attn/vllm aren't collected when those are missing, `tests/{ray,gpu_utility,model,rollout,e2e}` get the `gpu` marker and skip without CUDA, `tests/verl/utils/dataset/*` get `data` and skip without parquet files in `~/verl-data/`, and RNGs are seeded per test. Markers are strict (`gpu`, `data`, `network`). DeepRetrieval-specific unit tests live in `tests/deepretrieval/{rewards,core,evals}/`; they stub pyserini/flash_attn/vllm/API SDKs via `sys.modules` so they need no JVM, GPU or network.
 

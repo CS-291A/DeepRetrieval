@@ -12,11 +12,9 @@ PAD = 0
 def vllm_rollout(monkeypatch, fresh_import):
     # vllm is CUDA-only; the pre-processing helpers never touch it, so stub the imports.
     third_party_vllm = types.ModuleType("verl.third_party.vllm")
-    third_party_vllm.LLM = object
-    third_party_vllm.vllm_version = "stub"
-    third_party_vllm.parallel_state = types.ModuleType("parallel_state")
+    vars(third_party_vllm).update(LLM=object, vllm_version="stub", parallel_state=types.ModuleType("parallel_state"))
     vllm = types.ModuleType("vllm")
-    vllm.SamplingParams = object
+    vars(vllm)["SamplingParams"] = object
     monkeypatch.setitem(sys.modules, "verl.third_party.vllm", third_party_vllm)
     monkeypatch.setitem(sys.modules, "vllm", vllm)
     return fresh_import("verl.workers.rollout.vllm_rollout.vllm_rollout", "verl.workers.rollout.vllm_rollout")

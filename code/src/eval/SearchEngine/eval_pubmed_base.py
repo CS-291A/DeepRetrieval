@@ -3,18 +3,13 @@ import os
 
 # Debug: Print current directory and Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(os.path.dirname(current_dir))  # 
+project_root = os.path.dirname(os.path.dirname(current_dir))
 # Add the project root to Python path
-sys.path.insert(0, project_root)  # 
+sys.path.insert(0, project_root)
 
 
-import argparse
-import pandas as pd
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
 from tqdm import tqdm
 import json
-import re
 from collections import deque
 from threading import Lock
 import time
@@ -57,6 +52,8 @@ def main():
     if os.path.exists('verl/utils/reward_score/apis/pubmed_api.key'):
         api_key = open('verl/utils/reward_score/apis/pubmed_api.key', 'r').read().strip()
         search_api = PubmedAPI(api_key=api_key)
+    else:
+        raise FileNotFoundError(f"PubMed API key not found: {os.path.abspath('verl/utils/reward_score/apis/pubmed_api.key')}")
         
     test_path = "data/raw_data/pubmed/test.jsonl"
     test_data = []

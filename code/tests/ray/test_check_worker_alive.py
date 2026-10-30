@@ -25,6 +25,7 @@ def test():
     my_env["WAIT_TIME"] = str(wait_time)
 
     p = subprocess.Popen(["python3", "-u", str(Path(__file__).parent / "check_worker_alive" / "main.py")], env=my_env, stdout=subprocess.PIPE)
+    assert p.stdout is not None
 
     count = 0
     while b"foo started" not in p.stdout.read():
@@ -37,10 +38,10 @@ def test():
         time.time(),
         f"wait 1.5 wait time {wait_time*1.5} to let signal returned to process but still not exceed process wait time")
     time.sleep(wait_time * 1.5)
-    print(time.time(), f"start checking")
+    print(time.time(), "start checking")
     assert p.poll() is not None, f"process {p} still alive, expecting signal raised abort"
     assert p.returncode != 0, f"process {p} exit with code 0, expecting not-zero exit code"
-    print(f"test passed")
+    print("test passed")
 
 
 if __name__ == "__main__":

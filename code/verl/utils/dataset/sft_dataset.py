@@ -18,13 +18,13 @@ SFT dataset
 Each parquet file contains
 """
 
-from typing import List, Union
+from typing import cast
 
 import pandas as pd
 
 import torch
 from torch.utils.data import Dataset
-from transformers import AutoTokenizer, PreTrainedTokenizer
+from transformers import PreTrainedTokenizer
 
 from verl.utils.fs import copy_local_path_from_hdfs
 from verl.utils.model import compute_position_id_with_mask
@@ -37,7 +37,7 @@ class SFTDataset(Dataset):
     """
 
     def __init__(self,
-                 parquet_files: Union[str, List[str]],
+                 parquet_files: str | list[str],
                  tokenizer,
                  prompt_key='prompt',
                  prompt_dict_keys=None,
@@ -48,7 +48,7 @@ class SFTDataset(Dataset):
         assert truncation in ['error', 'left', 'right']
         self.truncation = truncation
 
-        if not isinstance(parquet_files, List):
+        if not isinstance(parquet_files, list):
             parquet_files = [parquet_files]
 
         self.parquet_files = parquet_files
@@ -74,7 +74,7 @@ class SFTDataset(Dataset):
 
         def series_to_item(ls):
             import pandas, numpy
-            while isinstance(ls, (pandas.core.series.Series, numpy.ndarray)) and len(ls) == 1:
+            while isinstance(ls, (pandas.Series, numpy.ndarray)) and len(ls) == 1:
                 ls = ls[0]
             return ls
 
@@ -117,17 +117,17 @@ class SFTDataset(Dataset):
         prompt_chat = [{'role': 'user', 'content': prompt}]
 
         # string
-        prompt_chat_str = tokenizer.apply_chat_template(prompt_chat, add_generation_prompt=True, tokenize=False)
+        prompt_chat_str = cast(str, tokenizer.apply_chat_template(prompt_chat, add_generation_prompt=True, tokenize=False))
         response_chat_str = response + tokenizer.eos_token
 
         # tokenize
         prompt_ids_output = tokenizer(prompt_chat_str, return_tensors='pt', add_special_tokens=False)
-        prompt_ids = prompt_ids_output['input_ids'][0]
-        prompt_attention_mask = prompt_ids_output['attention_mask'][0]
+        prompt_ids = cast(torch.Tensor, prompt_ids_output['input_ids'])[0]
+        prompt_attention_mask = cast(torch.Tensor, prompt_ids_output['attention_mask'])[0]
 
         response_ids_output = tokenizer(response_chat_str, return_tensors='pt', add_special_tokens=False)
-        response_ids = response_ids_output['input_ids'][0]
-        response_attention_mask = response_ids_output['attention_mask'][0]
+        response_ids = cast(torch.Tensor, response_ids_output['input_ids'])[0]
+        response_attention_mask = cast(torch.Tensor, response_ids_output['attention_mask'])[0]
 
         prompt_length = prompt_ids.shape[0]
         response_length = response_ids.shape[0]

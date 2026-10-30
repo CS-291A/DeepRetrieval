@@ -41,8 +41,7 @@ def convert_date(date_str):
 def save_checkpoint(data, output_file, checkpoint_file):
     # Save the current progress
     with open(output_file, 'w') as f:
-        for item in data:
-            f.write(json.dumps(item) + '\n')
+        f.writelines(json.dumps(item) + '\n' for item in data)
     
     # Save checkpoint info
     checkpoint_info = {
@@ -71,6 +70,7 @@ def get_pub_date(data, output_file, checkpoint_file, pubmed_api):
                 processed_data.append(json.loads(line))
         data = processed_data + data[start_idx:]
     
+    i = None  # set by the loop; None means no item was reached, so there is no progress to save
     try:
         for i, item in enumerate(tqdm(data[start_idx:], initial=start_idx)):
             if 'pub_date' in item.keys():
@@ -86,7 +86,7 @@ def get_pub_date(data, output_file, checkpoint_file, pubmed_api):
                     save_checkpoint(data[:i+1], output_file, checkpoint_file)
                     
             except Exception as e:
-                print(f"Error processing item {i}: {str(e)}")
+                print(f"Error processing item {i}: {e!s}")
                 continue
                 
         # Save final results
@@ -94,16 +94,20 @@ def get_pub_date(data, output_file, checkpoint_file, pubmed_api):
         return data
         
     except Exception as e:
-        print(f"Error during processing: {str(e)}")
+        print(f"Error during processing: {e!s}")
         # Save progress before raising the error
-        save_checkpoint(data[:i], output_file, checkpoint_file)
+        if i is not None:
+            save_checkpoint(data[:i], output_file, checkpoint_file)
         raise
 
 if __name__ == '__main__':
     # Initialize APIs
+    api_key = None
     if os.path.exists('verl/utils/reward_score/apis/pubmed_api.key'):
         api_key = open('verl/utils/reward_score/apis/pubmed_api.key', 'r').read().strip()
-        pubmed_api = PubmedAPI(api_key=api_key)
+    else:
+        print("Warning: verl/utils/reward_score/apis/pubmed_api.key not found; using the keyless, rate-limited PubMed client")
+    pubmed_api = PubmedAPI(api_key=api_key)
     ctgov_api = CTGovAPI()
 
     # Define data paths
@@ -135,7 +139,7 @@ if __name__ == '__main__':
                 os.remove(checkpoint_file)
                 
         except Exception as e:
-            print(f"Error processing {split_name} split: {str(e)}")
+            print(f"Error processing {split_name} split: {e!s}")
             print("Progress has been saved. You can resume by running the script again.")
     
     

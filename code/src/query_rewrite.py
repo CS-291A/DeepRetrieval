@@ -12,7 +12,7 @@ INSTRUCTION = """
 You are a query rewriting expert. Your task is to create query terms for user query to find relevant literature in a massive corpus.
 """
 
-def format_prompt(user_query: str) -> str:
+def format_prompt(user_query: str) -> list[dict[str, str]]:
     """Format the prompt for the model using the same template as make_prefix."""
     system_message = """You are a helpful assistant. You first thinks about the reasoning process in the mind and then provides the user with the answer."""
     

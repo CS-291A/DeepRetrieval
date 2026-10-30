@@ -12,13 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
 import torch
-from typing import Optional, List, Union, Tuple, Callable
 
-from typing_extensions import Unpack
 
-from transformers.models.llama.modeling_llama import apply_rotary_pos_emb, repeat_kv
+from transformers.models.llama.modeling_llama import apply_rotary_pos_emb
 from transformers.cache_utils import Cache
 from transformers.utils import logging
 from transformers.modeling_flash_attention_utils import _flash_attention_forward
@@ -29,19 +26,19 @@ logger = logging.get_logger(__name__)
 def llama_flash_attn_forward(
         self,
         hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.LongTensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        past_key_value: Optional[Cache] = None,
+        attention_mask: torch.LongTensor | None = None,
+        position_ids: torch.LongTensor | None = None,
+        past_key_value: Cache | None = None,
         output_attentions: bool = False,
         use_cache: bool = False,
-        cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.46
+        cache_position: torch.LongTensor | None = None,
+        position_embeddings: tuple[torch.Tensor, torch.Tensor] | None = None,  # will become mandatory in v4.46
         **kwargs,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+    ) -> tuple[torch.Tensor, torch.Tensor | None, Cache | None]:
     """
         adapt from transformers 4.47.1
         """
-    output_attentions = False
+    # output_attentions is ignored: flash attention never materialises attention weights
 
     bsz, q_len, _ = hidden_states.size()
 
@@ -72,7 +69,7 @@ def llama_flash_attn_forward(
     full_q_len = query_states.size(2)  # full seq length
 
     if position_embeddings is None:
-        logger.warning_once(
+        logger.warning_once(  # pyright: ignore[reportAttributeAccessIssue]  # transformers patches warning_once onto logging.Logger at runtime
             "The attention layers in this model are transitioning from computing the RoPE embeddings internally "
             "through `position_ids` (2D tensor with the indexes of the tokens), to using externally computed "
             "`position_embeddings` (Tuple of tensors, containing cos and sin). In v4.46 `position_ids` will be "
@@ -111,7 +108,7 @@ def llama_flash_attn_forward(
         else:
             target_dtype = self.q_proj.weight.dtype
 
-        logger.warning_once(
+        logger.warning_once(  # pyright: ignore[reportAttributeAccessIssue]  # transformers patches warning_once onto logging.Logger at runtime
             f"The input hidden states seems to be silently casted in float32, this might be related to"
             f" the fact you have upcasted embedding or layer norm layers in float32. We will cast back the input in"
             f" {target_dtype}.")
@@ -124,7 +121,7 @@ def llama_flash_attn_forward(
         query_states,
         key_states,
         value_states,
-        attention_mask,
+        attention_mask,  # pyright: ignore[reportArgumentType]  # transformers 4.47 annotates Tensor but handles None (`if attention_mask is not None`)
         full_q_len,
         position_ids=position_ids,
         dropout=dropout_rate,
@@ -141,7 +138,6 @@ def llama_flash_attn_forward(
     attn_output = attn_output.reshape(bsz, q_len, -1).contiguous()
     attn_output = self.o_proj(attn_output)
 
-    if not output_attentions:
-        attn_weights = None
+    attn_weights = None  # see output_attentions note above
 
     return attn_output, attn_weights, past_key_value

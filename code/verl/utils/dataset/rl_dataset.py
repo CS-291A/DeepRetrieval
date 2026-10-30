@@ -14,14 +14,14 @@
 
 from omegaconf import ListConfig
 import os
-from typing import List, Union
+from typing import cast
 
 import pandas as pd
 
 import torch
 import numpy as np
-from torch.utils.data import Dataset, DataLoader
-from transformers import AutoTokenizer, PreTrainedTokenizer
+from torch.utils.data import Dataset
+from transformers import PreTrainedTokenizer
 from verl.utils.fs import copy_local_path_from_hdfs
 
 from verl.utils.model import compute_position_id_with_mask
@@ -61,7 +61,7 @@ class RLHFDataset(Dataset):
     """
 
     def __init__(self,
-                 parquet_files: Union[str, List[str]],
+                 parquet_files: str | list[str],
                  tokenizer: PreTrainedTokenizer,
                  prompt_key='prompt',
                  max_prompt_length=1024,
@@ -70,7 +70,7 @@ class RLHFDataset(Dataset):
                  chat_template_func=None,
                  return_raw_chat=False,
                  truncation='error'):
-        if not isinstance(parquet_files, (List, ListConfig)):
+        if not isinstance(parquet_files, (list, ListConfig)):
             parquet_files = [parquet_files]
 
         self.parquet_files = parquet_files
@@ -130,7 +130,7 @@ class RLHFDataset(Dataset):
         input_ids, attention_mask = verl_F.tokenize_and_postprocess_data(prompt=prompt_with_chat_template,
                                                                          tokenizer=self.tokenizer,
                                                                          max_length=self.max_prompt_length,
-                                                                         pad_token_id=self.tokenizer.pad_token_id,
+                                                                         pad_token_id=cast(int, self.tokenizer.pad_token_id),  # hf_tokenizer sets it
                                                                          left_pad=True,
                                                                          truncation=self.truncation)
 

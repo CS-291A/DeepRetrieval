@@ -15,21 +15,21 @@
 Contain small torch utilities
 """
 
-from typing import Dict, Union, List, Optional
+from typing import cast
 
-import os
 import torch
 import torch.distributed
 import torch.nn.functional as F
-from tensordict import TensorDict
+from tensordict import TensorDict, TensorDictBase
 from torch import nn
 
 from verl.utils.import_utils import flash_attn_import_error
 
 try:
-    from flash_attn.ops.triton.cross_entropy import cross_entropy_loss
+    from flash_attn.ops.triton.cross_entropy import cross_entropy_loss  # pyright: ignore[reportMissingImports]  # flash-attn is Linux/CUDA-only (gpu extra)
     FLAH_ATTN_CROSS_ENTROPY_LOSS_AVAILABLE = True
 except ImportError:
+    cross_entropy_loss = None
     FLAH_ATTN_CROSS_ENTROPY_LOSS_AVAILABLE = False
 
 
@@ -65,6 +65,7 @@ def logprobs_from_logits(logits, labels):
 
 
 def logprobs_from_logits_flash_attn(logits, labels):
+    assert cross_entropy_loss is not None, 'only called when FLAH_ATTN_CROSS_ENTROPY_LOSS_AVAILABLE'
     output = -cross_entropy_loss(logits, labels)[0]
     return output
 
@@ -85,7 +86,7 @@ def logprobs_of_labels_v2(logits: torch.FloatTensor, labels):
     return logprobs_labels.squeeze(-1)
 
 
-def scalars_to_floats(tensors) -> List[float]:
+def scalars_to_floats(tensors) -> list[float]:
     """Read 0-dim tensors as Python floats with a single device-to-host sync.
 
     Each tensor is upcast to float64 before stacking, which is exact for bf16/fp16/fp32/fp64,
@@ -174,16 +175,16 @@ def compute_grad_norm(model: nn.Module):
     return total_grad_square
 
 
-def broadcast_dict_tensor(tensors: Union[Dict[str, torch.Tensor], TensorDict], src, group):
+def broadcast_dict_tensor(tensors: TensorDict, src, group):  # uses TensorDict.sorted_keys
     """
     TODO: optimize this. Technically, we only need one broadcast
     """
 
     for key in tensors.sorted_keys:
-        torch.distributed.broadcast(tensors[key], src=src, group=group, async_op=False)
+        torch.distributed.broadcast(tensors[key], src=src, group=group, async_op=False)  # pyright: ignore[reportArgumentType]  # tensordict 0.5 stub: sorted_keys yields NestedKey, which __getitem__ (IndexType) does not list
 
 
-def allgather_dict_tensors(tensors: Union[Dict[str, torch.Tensor], TensorDict], size, group, dim=0):
+def allgather_dict_tensors(tensors: dict[str, torch.Tensor] | TensorDict, size, group, dim=0):
     """
     TODO: optimize this.
     - We can use async ops
@@ -197,11 +198,9 @@ def allgather_dict_tensors(tensors: Union[Dict[str, torch.Tensor], TensorDict], 
 
     """
     if isinstance(tensors, TensorDict):
-        is_tensor_dict = True
         tensors_as_dict = tensors.to_dict()
     else:
         tensors_as_dict = tensors
-        is_tensor_dict = False
 
     output = {}
     sorted_keys = sorted(tensors_as_dict.keys())
@@ -211,13 +210,13 @@ def allgather_dict_tensors(tensors: Union[Dict[str, torch.Tensor], TensorDict], 
         torch.distributed.all_gather(output[key], val, group=group, async_op=False)
         output[key] = torch.cat(output[key], dim=dim)
 
-    if is_tensor_dict:
+    if isinstance(tensors, TensorDict):
         output = TensorDict(source=output, batch_size=tensors.batch_size[0] * size)
 
     return output
 
 
-def split_dict_tensor_into_batches(tensors: TensorDict, batch_size) -> List[TensorDict]:
+def split_dict_tensor_into_batches(tensors: TensorDict, batch_size) -> list[TensorDictBase]:
     assert tensors.batch_size[0] % batch_size == 0, \
         f'input data batch size: {tensors.batch_size[0]}, split batch size: {batch_size}'
     return tensors.split(batch_size)
@@ -252,8 +251,9 @@ def tokenize_and_postprocess_data(prompt: str,
 
     input_data = tokenizer(prompt, return_tensors='pt', add_special_tokens=False)
 
-    input_ids = input_data['input_ids']
-    attention_mask = input_data['attention_mask']
+    # return_tensors='pt' -> both entries are tensors
+    input_ids = cast(torch.Tensor, input_data['input_ids'])
+    attention_mask = cast(torch.Tensor, input_data['attention_mask'])
 
     assert input_ids.ndim == 2
 
@@ -326,7 +326,7 @@ def log_probs_from_logits_response_rmpad(input_ids, attention_mask, logits_rmpad
         response_length: int
     """
     try:
-        from flash_attn.bert_padding import pad_input, unpad_input
+        from flash_attn.bert_padding import pad_input, unpad_input  # pyright: ignore[reportMissingImports]  # flash-attn is Linux/CUDA-only (gpu extra)
     except ImportError as e:
         raise flash_attn_import_error('log_probs_from_logits_response_rmpad') from e
 
@@ -359,7 +359,7 @@ def log_probs_from_logits_all_rmpad(input_ids_rmpad, logits_rmpad, indices, batc
         response_length: int
     """
     try:
-        from flash_attn.bert_padding import pad_input
+        from flash_attn.bert_padding import pad_input  # pyright: ignore[reportMissingImports]  # flash-attn is Linux/CUDA-only (gpu extra)
     except ImportError as e:
         raise flash_attn_import_error('log_probs_from_logits_all_rmpad') from e
     input_ids_rmpad = input_ids_rmpad.transpose(0, 1)  # transpose back to [total_nnz, 1]
@@ -374,7 +374,6 @@ def log_probs_from_logits_all_rmpad(input_ids_rmpad, logits_rmpad, indices, batc
     return output
 
 
-from transformers.generation.logits_process import (TemperatureLogitsWarper, TopKLogitsWarper, TopPLogitsWarper)
 
 
 def post_process_logits(input_ids, logits, temperature, top_k, top_p):
@@ -392,7 +391,7 @@ def post_process_logits(input_ids, logits, temperature, top_k, top_p):
 Optimizer related
 """
 
-from torch.optim import Optimizer
+from torch.optim.optimizer import Optimizer
 from torch.optim.lr_scheduler import LambdaLR
 import math
 
@@ -487,7 +486,7 @@ def _make_causal_mask(input_ids_shape: torch.Size, dtype: torch.dtype, device: t
 
 
 # Copied from transformers.models.bart.modeling_bart._expand_mask
-def _expand_mask(mask: torch.Tensor, dtype: torch.dtype, tgt_len: Optional[int] = None):
+def _expand_mask(mask: torch.Tensor, dtype: torch.dtype, tgt_len: int | None = None):
     """
     Expands attention_mask from `[bsz, seq_len]` to `[bsz, 1, tgt_seq_len, src_seq_len]`.
     """

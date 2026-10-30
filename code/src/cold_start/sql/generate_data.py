@@ -87,7 +87,7 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         try:
             thread_id, D = future.result()
             sft_data[thread_id] = D
-        except Exception as e:
+        except Exception:
             traceback.print_exc()
             error_count += 1
 print(f'Error count: {error_count}')

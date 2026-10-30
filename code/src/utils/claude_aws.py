@@ -1,10 +1,11 @@
 import os
-import pdb
+from typing import TYPE_CHECKING, cast
 
-from langchain_anthropic import ChatAnthropic
-from langchain_core.prompts import ChatPromptTemplate
 
-from anthropic import AnthropicBedrock
+from anthropic import AnthropicBedrock  # pyright: ignore[reportPrivateImportUsage]  # anthropic re-exports it via `from .lib.bedrock import *` but omits it from __all__
+
+if TYPE_CHECKING:
+    from anthropic.types import MessageParam, TextBlock
 
 AWS_DEFAULT_REGION = "us-west-2"
 AWS_KEY_FILE = './claude_api_aws.key'
@@ -21,7 +22,7 @@ def _aws_credentials():
     if os.path.isfile(AWS_KEY_FILE):
         with open(AWS_KEY_FILE, 'r') as f:
             # two lines, one for AWS_ACCESS_KEY_ID, the next for AWS_SECRET_ACCESS_KEY
-            keys = [line.strip() for line in f.readlines()]
+            keys = [line.strip() for line in f]
         if len(keys) >= 2 and keys[0] and keys[1]:
             return keys[0], keys[1]
         raise RuntimeError(f"{os.path.abspath(AWS_KEY_FILE)} must hold two lines: access key id, then secret key")
@@ -47,6 +48,7 @@ def get_client():
 
 def chat_haiku(prompt):
 
+    message: list[MessageParam]
     if isinstance(prompt, str):
         message = [{
             'role': 'user',
@@ -55,17 +57,20 @@ def chat_haiku(prompt):
     else:
         message = prompt
     
-    message = get_client().messages.create(
-        temperature=0,
+    response = get_client().messages.create(
+        # anthropic 1.x has no `temperature` kwarg; it still sends bedrock-2023-05-31, so the body field is accepted
+        extra_body={"temperature": 0},
         model="anthropic.claude-3-haiku-20240307-v1:0",
         max_tokens=1024,
         messages=message,
     )
     
-    return message.content[0].text
+    # No tools or thinking are requested, so the reply is a single text block.
+    return cast("TextBlock", response.content[0]).text
 
 def chat_sonnet(prompt):
     
+    message: list[MessageParam]
     if isinstance(prompt, str):
         message = [{
             'role': 'user',
@@ -74,14 +79,16 @@ def chat_sonnet(prompt):
     else:
         message = prompt
 
-    message = get_client().messages.create(
-        temperature=0,
+    response = get_client().messages.create(
+        # anthropic 1.x has no `temperature` kwarg; it still sends bedrock-2023-05-31, so the body field is accepted
+        extra_body={"temperature": 0},
         model="anthropic.claude-3-5-sonnet-20240620-v1:0",
         max_tokens=1024,
         messages=message,
     )
     
-    return message.content[0].text
+    # No tools or thinking are requested, so the reply is a single text block.
+    return cast("TextBlock", response.content[0]).text
 
 
 if __name__ == "__main__":

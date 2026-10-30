@@ -15,6 +15,8 @@
 In client, we can get the server handler and send RPC request
 """
 
+from typing import Any
+
 import ray
 import torch
 
@@ -37,8 +39,8 @@ if __name__ == '__main__':
     # get the worker group using names
     worker_names = ['trainerTrainer_0:0', 'trainerTrainer_0:1']
     cls_with_init_args = RayClassWithInitArgs(cls=Trainer)
-    worker_group = NVMegatronRayWorkerGroup.from_detached(worker_names=worker_names,
-                                                          ray_cls_with_init=cls_with_init_args)
+    worker_group: Any = NVMegatronRayWorkerGroup.from_detached(worker_names=worker_names,  # worker methods are bound onto the group at runtime
+                                                               ray_cls_with_init=cls_with_init_args)
 
     batch_size = 16
     sequence_length = 1024

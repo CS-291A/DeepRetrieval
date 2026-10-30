@@ -16,7 +16,6 @@ Utilities to create common models from huggingface
 """
 import os
 import warnings
-from typing import Dict, Type
 
 import numpy as np
 import torch
@@ -44,10 +43,10 @@ def update_model_config(module_config, override_config_kwargs):
         setattr(module_config, key, val)
 
 
-def get_huggingface_actor_config(model_name: str, override_config_kwargs=None, trust_remote_code=False) -> Dict:
+def get_huggingface_actor_config(model_name: str, override_config_kwargs=None, trust_remote_code=False) -> dict:
     if override_config_kwargs is None:
         override_config_kwargs = {}
-    assert isinstance(override_config_kwargs, Dict), \
+    assert isinstance(override_config_kwargs, dict), \
         f'override_config_kwargs must be a dict, got {type(override_config_kwargs)}'
     module_config = AutoConfig.from_pretrained(model_name, trust_remote_code=trust_remote_code)
     update_model_config(module_config, override_config_kwargs)
@@ -69,7 +68,7 @@ def create_huggingface_actor(model_name: str, override_config_kwargs=None, autom
         override_config_kwargs = {}
     if automodel_kwargs is None:
         automodel_kwargs = {}
-    assert isinstance(override_config_kwargs, Dict), \
+    assert isinstance(override_config_kwargs, dict), \
         f'override_config_kwargs must be a dict, got {type(override_config_kwargs)}'
     module_config = get_huggingface_actor_config(model_name,
                                                  override_config_kwargs,
@@ -126,7 +125,7 @@ def get_model_size(model: nn.Module, scale='auto'):
     return n_params, scale
 
 
-def print_model_size(model: nn.Module, name: str = None):
+def print_model_size(model: nn.Module, name: str | None = None):
     n_params, scale = get_model_size(model, scale='auto')
     if name is None:
         name = model.__class__.__name__
@@ -207,6 +206,7 @@ def normalize_pp_vpp_params(params, num_hidden_layers, layer_name='layers'):
         if layer_name in name:  # belong to an intermediate layer
             split_name = name.split('.')
             # find the num next to split_name
+            i = 0  # str.split never returns an empty list, so the loop below always rebinds i
             for i, name in enumerate(split_name):
                 if name == layer_name:
                     break
@@ -232,7 +232,7 @@ def normalize_pp_vpp_params(params, num_hidden_layers, layer_name='layers'):
 
 
 def get_parallel_model_from_config(config, megatron_config, pre_process=None, post_process=None, value=False):
-    from megatron.core import ModelParallelConfig
+    from megatron.core import ModelParallelConfig  # pyright: ignore[reportMissingImports]  # megatron is Linux/CUDA-only, not in the lock
     assert isinstance(megatron_config, ModelParallelConfig)
     model_class = _get_parallel_model_architecture_from_config(config, value)
 
@@ -240,7 +240,7 @@ def get_parallel_model_from_config(config, megatron_config, pre_process=None, po
     return model
 
 
-def _get_parallel_model_architecture_from_config(config: PretrainedConfig, value=False) -> Type[nn.Module]:
+def _get_parallel_model_architecture_from_config(config: PretrainedConfig, value=False) -> type[nn.Module]:
     architectures = getattr(config, "architectures", [])
     for arch in architectures:
         model_cls = ModelRegistry.load_model_cls(arch, value)
@@ -324,7 +324,7 @@ def pad_packed_inputs(unpad_tokens: torch.Tensor, cu_seqlens, max_seqlen_in_batc
         elif unpad_tokens.ndim == 2:
             unpad_tokens = F.pad(unpad_tokens, (0, 0, 0, pad_size))
         else:
-            raise NotImplementedError(f'Padding dim {unpad_tokens.ndim()} is not supported')
+            raise NotImplementedError(f'Padding dim {unpad_tokens.ndim} is not supported')
 
         cu_seqlens = F.pad(cu_seqlens, (0, 1), value=pad_size + cu_seqlens[-1])
         max_seqlen_in_batch = max(max_seqlen_in_batch, pad_size)

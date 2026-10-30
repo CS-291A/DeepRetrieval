@@ -1,15 +1,10 @@
-import re
 import os
-from datasets import Dataset, load_dataset
-from random import randint, seed, choice
-from typing import List, Tuple
-from tqdm import tqdm
+from datasets import Dataset
+from typing import Any, cast
+from collections.abc import Iterable
 from verl.utils.hdfs_io import copy, makedirs
 import argparse
 import json
-from collections import defaultdict, Counter
-import random
-import pdb
 
 
 
@@ -136,15 +131,15 @@ if __name__ == '__main__':
     val_dataset = val_dataset.shuffle(seed=42)
     
     lengths_list = []
-    for d in train_dataset:
+    for d in cast(Iterable[dict[str, Any]], train_dataset):
         lengths_list.append(len(d['prompt'][0]['content'].split()))
 
     lengths_list_test = []
-    for d in test_dataset:
+    for d in cast(Iterable[dict[str, Any]], test_dataset):
         lengths_list_test.append(len(d['prompt'][0]['content'].split()))
         
     lengths_list_val = []
-    for d in val_dataset:
+    for d in cast(Iterable[dict[str, Any]], val_dataset):
         lengths_list_val.append(len(d['prompt'][0]['content'].split()))
         
     print(f"Average length of train dataset: {sum(lengths_list) / len(lengths_list)}")

@@ -15,11 +15,10 @@
 Contain small python utility functions
 """
 
-from typing import Dict
 from types import SimpleNamespace
 
 
-def union_two_dict(dict1: Dict, dict2: Dict):
+def union_two_dict(dict1: dict, dict2: dict):
     """Union two dict. Will throw an error if there is an item not the same object with the same key.
 
     Args:
@@ -31,14 +30,14 @@ def union_two_dict(dict1: Dict, dict2: Dict):
     """
     for key, val in dict2.items():
         if key in dict1:
-            assert dict2[key] == dict1[key], \
+            assert val == dict1[key], \
                 f'{key} in meta_dict1 and meta_dict2 are not the same object'
         dict1[key] = val
 
     return dict1
 
 
-def append_to_dict(data: Dict, new_data: Dict):
+def append_to_dict(data: dict, new_data: dict):
     for key, val in new_data.items():
         if key not in data:
             data[key] = []

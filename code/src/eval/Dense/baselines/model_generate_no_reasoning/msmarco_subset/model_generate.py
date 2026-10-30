@@ -5,7 +5,6 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from tqdm import tqdm
 import json
 import os
-import pdb
 import re
 import numpy as np
 

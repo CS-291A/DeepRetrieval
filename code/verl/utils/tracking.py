@@ -18,13 +18,13 @@ import dataclasses
 from enum import Enum
 from functools import partial
 from pathlib import Path
-from typing import List, Union, Dict, Any
+from typing import Any
 
 
-class Tracking(object):
+class Tracking:
     supported_backend = ('wandb', 'mlflow', 'console')
 
-    def __init__(self, project_name, experiment_name, default_backend: Union[str, List[str]] = 'console', config=None):
+    def __init__(self, project_name, experiment_name, default_backend: str | list[str] = 'console', config=None):
         if isinstance(default_backend, str):
             default_backend = [default_backend]
         for backend in default_backend:
@@ -46,7 +46,7 @@ class Tracking(object):
             self.logger['wandb'] = wandb
 
         if 'mlflow' in default_backend:
-            import mlflow
+            import mlflow  # pyright: ignore[reportMissingImports]  # optional backend, not in the lock
             mlflow.start_run(run_name=experiment_name)
             mlflow.log_params(_compute_mlflow_params_from_objects(config))
             self.logger['mlflow'] = _MlflowLoggingAdapter()
@@ -65,21 +65,23 @@ class Tracking(object):
 class _MlflowLoggingAdapter:
 
     def log(self, data, step):
-        import mlflow
+        import mlflow  # pyright: ignore[reportMissingImports]  # optional backend, not in the lock
         mlflow.log_metrics(metrics=data, step=step)
 
 
-def _compute_mlflow_params_from_objects(params) -> Dict[str, Any]:
+def _compute_mlflow_params_from_objects(params) -> dict[str, Any]:
     if params is None:
         return {}
 
-    return _flatten_dict(_transform_params_to_json_serializable(params, convert_list_to_dict=True), sep='/')
+    serializable = _transform_params_to_json_serializable(params, convert_list_to_dict=True)
+    assert isinstance(serializable, dict), f'mlflow params must be a mapping, got {type(params).__name__}'
+    return _flatten_dict(serializable, sep='/')
 
 
 def _transform_params_to_json_serializable(x, convert_list_to_dict: bool):
     _transform = partial(_transform_params_to_json_serializable, convert_list_to_dict=convert_list_to_dict)
 
-    if dataclasses.is_dataclass(x):
+    if dataclasses.is_dataclass(x) and not isinstance(x, type):  # an instance; asdict rejects classes
         return _transform(dataclasses.asdict(x))
     if isinstance(x, dict):
         return {k: _transform(v) for k, v in x.items()}
@@ -96,7 +98,7 @@ def _transform_params_to_json_serializable(x, convert_list_to_dict: bool):
     return x
 
 
-def _flatten_dict(raw: Dict[str, Any], *, sep: str) -> Dict[str, Any]:
+def _flatten_dict(raw: dict[str, Any], *, sep: str) -> dict[str, Any]:
     import pandas as pd
     ans = pd.json_normalize(raw, sep=sep).to_dict(orient='records')[0]
     assert isinstance(ans, dict)

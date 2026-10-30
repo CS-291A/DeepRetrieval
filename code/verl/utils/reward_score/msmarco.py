@@ -1,10 +1,10 @@
 import re
 import random
-import numpy as np
 import json
 import logging
 import sys
 import os
+from typing import Any, cast
 sys.path.append('./')
 
 import torch
@@ -48,7 +48,7 @@ def get_searcher(mode='sparse'):
             # The prebuilt index was encoded with TCT-ColBERT, so queries must use the matching encoder
             # (pyserini's FaissSearcher crashes on a None encoder).
             prebuilt_index = 'msmarco-v1-passage.tct_colbert'
-            _searcher = FaissSearcher.from_prebuilt_index(prebuilt_index, 'castorini/tct_colbert-msmarco')
+            _searcher = FaissSearcher.from_prebuilt_index(prebuilt_index, 'castorini/tct_colbert-msmarco')  # pyright: ignore[reportArgumentType]  # pyserini 0.22 annotates QueryEncoder but forwards to __init__, which accepts an encoder name str
             if _searcher is None:
                 raise RuntimeError(f"Dense index {index_dir} not found and pyserini could not load the "
                                    f"prebuilt index '{prebuilt_index}'")
@@ -158,11 +158,14 @@ def retriver_items(query, top_k=3000, mode='sparse'):
     """Retrieve items from the search system."""
     searcher = get_searcher(mode=mode)
     assert searcher is not None, f"no msmarco searcher for mode {mode!r}"
-    hits = searcher.search(query, k=top_k)
+    # A single str query returns a list of hits from either searcher; mode says which kind.
+    hits = cast(list[Any], searcher.search(query, k=top_k))
     if mode == 'sparse':
         doc_list = [json.loads(hit.lucene_document.get('raw'))['id'] for hit in hits]
     elif mode == 'dense':
         doc_list = [hit.docid for hit in hits]
+    else:
+        raise ValueError(f"unknown msmarco retrieval mode {mode!r}")  # compute_score only passes 'sparse' or 'dense'
     return doc_list
     
 def calculate_answer_score(json_str, label, scores, top_k, test_k, mode='sparse', do_print=False):
@@ -237,7 +240,7 @@ def compute_score(solution_str, ground_truth, data_source, format_reward=0.1, an
     #     print(f"Format score: {format_score}")
     
     if do_print:
-        print(f"--------------------------------")
+        print("--------------------------------")
         print(f"Solution string: {solution_str}")
     
     answer_score = 0
@@ -267,7 +270,7 @@ def compute_score(solution_str, ground_truth, data_source, format_reward=0.1, an
     
     if do_print:
         print("\n" + "-"*80)
-        print(f" Final Score ".center(80, '-'))
+        print(" Final Score ".center(80, '-'))
         print(f"  Format: {format_score}")
         print(f"  Answer: {answer_score}")
         print(f"  Total: {total_score}")
@@ -280,5 +283,5 @@ if __name__ == '__main__':
     solution_str = """<|im_start|>assistant:  <answer>{"query": "Microstructural development of human"}</answer>
 """
     ground_truth = {'target': '4983'}
-    scores = compute_score(solution_str, ground_truth)
+    scores = compute_score(solution_str, ground_truth, data_source='msmarco_sparse')
     print(scores)

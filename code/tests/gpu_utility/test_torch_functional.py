@@ -13,8 +13,9 @@
 # limitations under the License.
 
 from verl.utils.model import create_random_mask
-from flash_attn.bert_padding import unpad_input
+from flash_attn.bert_padding import unpad_input  # pyright: ignore[reportMissingImports]  # flash_attn is Linux/CUDA-only (gpu extra)
 import torch
+from torch.optim.adam import Adam  # torch 2.4 optim has no __all__, so pyright treats torch.optim.Adam as private
 
 
 def test_log_probs_from_logits_response_rmpad():
@@ -52,7 +53,7 @@ def test_log_probs_from_logits_response_rmpad():
 def test_lr_scheduler():
     from torch import nn
     model = nn.Linear(10, 10)
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    optimizer = Adam(model.parameters(), lr=1e-3)
 
     from verl.utils.torch_functional import get_constant_schedule_with_warmup
     constant_lr = get_constant_schedule_with_warmup(optimizer=optimizer, num_warmup_steps=2)
@@ -66,7 +67,7 @@ def test_lr_scheduler():
     torch.testing.assert_close(lr_lst, [0.0, 0.0005, 0.001, 0.001, 0.001])
 
     from verl.utils.torch_functional import get_cosine_schedule_with_warmup
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    optimizer = Adam(model.parameters(), lr=1e-3)
     cosine_lr = get_cosine_schedule_with_warmup(optimizer=optimizer,
                                                 num_warmup_steps=2,
                                                 num_training_steps=5,

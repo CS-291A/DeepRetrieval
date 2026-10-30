@@ -1,15 +1,10 @@
-import re
 import os
-from datasets import Dataset, load_dataset
-from random import randint, seed, choice
-from typing import List, Tuple
-from tqdm import tqdm
+from datasets import Dataset
+from typing import Any, cast
+from collections.abc import Iterable
 from verl.utils.hdfs_io import copy, makedirs
 import argparse
 import json
-from collections import defaultdict, Counter
-import random
-import pdb
 import sqlite3
 
 
@@ -44,6 +39,8 @@ def generate_schema_prompt(db_id, split, num_rows=None):
         db_path = f'data/raw_data/bird/train/train_databases/{db_id}/{db_id}.sqlite'
     elif split == 'val' or split == 'test':
         db_path = f'data/raw_data/bird/dev/dev_databases/{db_id}/{db_id}.sqlite'
+    else:
+        raise ValueError(f"unknown split: {split!r}")
 
     full_schema_prompt_list = []
     conn = sqlite3.connect(db_path)
@@ -55,21 +52,21 @@ def generate_schema_prompt(db_id, split, num_rows=None):
     for table in tables:
         if table == 'sqlite_sequence':
             continue
-        cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='{}';".format(table[0]))
+        cursor.execute(f"SELECT sql FROM sqlite_master WHERE type='table' AND name='{table[0]}';")
         create_prompt = cursor.fetchone()[0]
         schemas[table[0]] = create_prompt
         try:
             if num_rows:
                 cur_table = table[0]
                 if cur_table in ['order', 'by', 'group']:
-                    cur_table = "`{}`".format(cur_table)
+                    cur_table = f"`{cur_table}`"
 
-                cursor.execute("SELECT * FROM {} LIMIT {}".format(cur_table, num_rows))
+                cursor.execute(f"SELECT * FROM {cur_table} LIMIT {num_rows}")
                 column_names = [description[0] for description in cursor.description]
                 values = cursor.fetchall()
                 rows_prompt = nice_look_table(column_names=column_names, values=values)
-                verbose_prompt = "/* \n {} example rows: \n SELECT * FROM {} LIMIT {}; \n {} \n */".format(num_rows, cur_table, num_rows, rows_prompt)
-                schemas[table[0]] = "{} \n {}".format(create_prompt, verbose_prompt)
+                verbose_prompt = f"/* \n {num_rows} example rows: \n SELECT * FROM {cur_table} LIMIT {num_rows}; \n {rows_prompt} \n */"
+                schemas[table[0]] = f"{create_prompt} \n {verbose_prompt}"
         except Exception as e:
             print(f"Error: {e}")
             continue
@@ -140,13 +137,13 @@ Let me write the SQL query with reasoning.
 
 def load_bird_dataset():
     
-    with open(f'data/raw_data/bird/train/train.json', 'r') as f:
+    with open('data/raw_data/bird/train/train.json', 'r') as f:
         data_train = json.load(f)
 
-    with open(f'data/raw_data/bird/dev/dev.json', 'r') as f:
+    with open('data/raw_data/bird/dev/dev.json', 'r') as f:
         data_test = json.load(f)
             
-    with open(f'data/raw_data/bird/dev/dev.json', 'r') as f:
+    with open('data/raw_data/bird/dev/dev.json', 'r') as f:
         data_val = json.load(f)[:100]
     
     train_data = [{'question': x['question'], 'db_id': x['db_id'], 'knowledge': x['evidence'], 'sql': x['SQL']} for x in data_train]
@@ -186,6 +183,8 @@ if __name__ == '__main__':
                 db_path = f'data/raw_data/bird/train/train_databases/{db_id}/{db_id}.sqlite'
             elif split == 'val' or split == 'test':
                 db_path = f'data/raw_data/bird/dev/dev_databases/{db_id}/{db_id}.sqlite'
+            else:
+                raise ValueError(f"unknown split: {split!r}")
 
             data = {
                 "data_source": f"{data_source}_{split}",
@@ -223,15 +222,15 @@ if __name__ == '__main__':
     print(f"Train dataset size after filtering: {train_dataset.num_rows}")
 
     lengths_list = []
-    for d in train_dataset:
+    for d in cast(Iterable[dict[str, Any]], train_dataset):
         lengths_list.append(len(d['prompt'][0]['content'].split()))
 
     lengths_list_test = []
-    for d in test_dataset:
+    for d in cast(Iterable[dict[str, Any]], test_dataset):
         lengths_list_test.append(len(d['prompt'][0]['content'].split()))
         
     lengths_list_val = []
-    for d in val_dataset:
+    for d in cast(Iterable[dict[str, Any]], val_dataset):
         lengths_list_val.append(len(d['prompt'][0]['content'].split()))
         
     print(f"Average length of train dataset: {sum(lengths_list) / len(lengths_list)}")

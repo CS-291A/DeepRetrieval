@@ -42,7 +42,9 @@ def posts(rewrite, monkeypatch):
 
 def _hosted_model():
     script = (CODE_DIR.parent / "vllm_host.sh").read_text()
-    return re.search(r"^\s*--model (\S+)", script, re.MULTILINE).group(1)
+    match = re.search(r"^\s*--model (\S+)", script, re.MULTILINE)
+    assert match is not None, "vllm_host.sh has no --model line"
+    return match.group(1)
 
 
 def test_default_model_is_the_one_vllm_host_serves(rewrite, posts):

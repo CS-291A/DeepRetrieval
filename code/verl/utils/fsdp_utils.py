@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Dict
+from typing import cast
 import functools
 import json
 import math
@@ -22,22 +22,22 @@ from contextlib import contextmanager
 from torch.distributed.fsdp.wrap import size_based_auto_wrap_policy, transformer_auto_wrap_policy
 from transformers.trainer_pt_utils import get_module_class_from_name
 import torch
-import torch.nn as nn
+from torch import nn
 import torch.distributed as dist
 
 
-def init_fn(x: torch.nn.Module):
-    if not torch.distributed.get_rank() == 0:
-        x = x.to_empty(device=torch.cuda.current_device(), recurse=False)
+def init_fn(x: torch.nn.Module) -> None:
+    # FSDP's param_init_fn contract is (Module) -> None; to_empty works in place.
+    if not dist.get_rank() == 0:
+        x.to_empty(device=torch.cuda.current_device(), recurse=False)
         torch.cuda.empty_cache()
-    return x
 
 
 def get_init_weight_context_manager(use_meta_tensor=True):
     from accelerate import init_empty_weights
     cpu_init_weights = lambda: torch.device('cpu')
     if use_meta_tensor:
-        init_context = init_empty_weights if torch.distributed.get_rank() != 0 else cpu_init_weights
+        init_context = init_empty_weights if dist.get_rank() != 0 else cpu_init_weights
     else:
         init_context = cpu_init_weights
     return init_context
@@ -143,7 +143,8 @@ def meta_device_init():
     old_register_parameter = nn.Module.register_parameter
     registered = set()
 
-    def register_empty_parameter(module, name, param):
+    def register_empty_parameter(self, name, param):
+        module = self
         old_register_parameter(module, name, param)
         # we will skip register shared parameters as it
         # is already registered previously
@@ -218,7 +219,7 @@ def parallel_load_safetensors(filepath):
     return shard_states
 
 
-def parallel_init_module_fn(module: torch.nn.Module, shard_states: Dict[str, torch.nn.Parameter]):
+def parallel_init_module_fn(module: torch.nn.Module, shard_states: dict[str, torch.nn.Parameter]):
     """
     Generate a function to initialize sub-modules in the `module` with `shard_states`
     from huggingface checkpoint.
@@ -286,7 +287,7 @@ def parallel_init_module_fn(module: torch.nn.Module, shard_states: Dict[str, tor
             else:
                 materialize_state = create_and_sync_state(fqn, state, is_param)
             if is_param:
-                sub_mod._parameters[name] = materialize_state
+                sub_mod._parameters[name] = cast(torch.nn.Parameter, materialize_state)  # create_and_sync_state returns a Parameter for params
             else:
                 sub_mod._buffers[name] = materialize_state
         if recurse:

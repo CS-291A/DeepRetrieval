@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from abc import ABC, abstractmethod
-from typing import Iterable, Union
 
 from verl import DataProto
 
@@ -34,4 +33,3 @@ class BaseRollout(ABC):
     @abstractmethod
     def generate_sequences(self, prompts: DataProto) -> DataProto:
         """Generate sequences"""
-        pass

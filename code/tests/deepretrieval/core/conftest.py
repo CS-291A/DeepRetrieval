@@ -40,7 +40,7 @@ def stub_flash_attn(monkeypatch):
     bert_padding = types.ModuleType("flash_attn.bert_padding")
     for attr in ("pad_input", "unpad_input", "rearrange", "index_first_axis"):
         setattr(bert_padding, attr, _not_available)
-    flash_attn.bert_padding = bert_padding
+    vars(flash_attn)["bert_padding"] = bert_padding
     monkeypatch.setitem(sys.modules, "flash_attn", flash_attn)
     monkeypatch.setitem(sys.modules, "flash_attn.bert_padding", bert_padding)
     return bert_padding

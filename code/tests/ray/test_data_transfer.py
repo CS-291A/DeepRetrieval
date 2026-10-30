@@ -15,12 +15,15 @@
 In this test, we instantiate a data parallel worker with 8 GPUs
 """
 
+from typing import Any
+
 from verl.single_controller.base import Worker
 from verl.single_controller.ray import RayWorkerGroup, RayClassWithInitArgs, RayResourcePool
 
 from verl.single_controller.base.decorator import Dispatch, register
 
 import ray
+import ray.cloudpickle
 import torch
 
 from torch import distributed as dist
@@ -55,7 +58,7 @@ def test_data_transfer():
     resource_pool = RayResourcePool([8])
     cls_with_init = RayClassWithInitArgs(cls=DummyWorker)
     # construct worker group
-    wg = RayWorkerGroup(resource_pool, cls_with_init)
+    wg: Any = RayWorkerGroup(resource_pool, cls_with_init)  # worker methods are bound onto the group at runtime
 
     # this is real dataset size
     batch_size = 4096
@@ -76,7 +79,7 @@ def test_data_transfer():
     for i in range(wg.world_size):
         # consolidate is necessary
         if tensordict.__version__ >= '0.5.0':
-            data_list[i].batch = data_list[i].batch.consolidate()
+            data_list[i].batch = data_list[i].batch.consolidate()  # pyright: ignore[reportAttributeAccessIssue]  # tensordict 0.5.0 annotates consolidate -> None; it returns the TensorDict
 
     with Timer(name='ray.pickle', initial_text=True):
         for i in range(wg.world_size):
@@ -102,7 +105,7 @@ def test_data_transfer():
         output_lst = ray.get(output_ref)
 
     for input_data, output_data in zip(data_list, output_lst):
-        for key in input_data.batch.keys():
+        for key in input_data.batch.keys():  # pyright: ignore[reportGeneralTypeIssues]  # tensordict 0.5.0 annotates _TensorDictKeysView.__iter__ as Iterable, not Iterator
             assert torch.all(torch.eq(input_data.batch[key] + 1,
                                       output_data.batch[key])), (input_data.batch[key], output_data.batch[key], key)
 

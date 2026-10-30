@@ -22,7 +22,7 @@ Apply monkey-patch function to models
 def apply_monkey_patch_to_llama():
     from transformers.models.llama.modeling_llama import LlamaFlashAttention2
     from verl.models.transformers.llama import llama_flash_attn_forward
-    LlamaFlashAttention2.forward = llama_flash_attn_forward
+    LlamaFlashAttention2.forward = llama_flash_attn_forward  # pyright: ignore[reportAttributeAccessIssue]  # transformers 4.47 annotates the cache slot Tuple[Tensor] but returns a Cache (verified in its own forward)
 
 
 def apply_monkey_patch_to_qwen2():
@@ -62,7 +62,7 @@ from packaging import version
 import importlib.metadata
 
 
-@lru_cache()
+@lru_cache
 def is_transformers_version_in_range(min_version: str, max_version: str) -> bool:
     try:
         # Get the installed version of the transformers library

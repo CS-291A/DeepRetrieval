@@ -77,7 +77,10 @@ def test_ray_worker_group_imports_without_deprecation_warning():
 
 def _exec_protocol_copy():
     """Execute verl/protocol.py as a throwaway module so sys.modules['verl.protocol'] is untouched."""
-    spec = importlib.util.spec_from_file_location("_protocol_copy", VERL_DIR / "protocol.py")
+    path = VERL_DIR / "protocol.py"
+    spec = importlib.util.spec_from_file_location("_protocol_copy", path)
+    assert spec is not None, f"no import spec for {path}"
+    assert spec.loader is not None, f"no loader for {path}"
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module

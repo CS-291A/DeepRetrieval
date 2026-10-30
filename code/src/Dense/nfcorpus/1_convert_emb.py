@@ -5,7 +5,6 @@ from transformers import AutoTokenizer, AutoModel
 from tqdm import tqdm
 import sys
 sys.path.append('code')
-import pdb
 import os
 
 from src.Dense.utils import average_pool

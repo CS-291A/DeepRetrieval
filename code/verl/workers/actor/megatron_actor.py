@@ -20,7 +20,7 @@ Note that our model doesn't have to be `MegatronModule` because we don't share e
 """
 
 from functools import partial
-from typing import Iterable, Dict
+from collections.abc import Iterable
 
 import torch
 from torch import nn
@@ -40,7 +40,7 @@ from verl import DataProto
 from verl.trainer.ppo import core_algos
 from verl.workers.actor import BasePPOActor
 from verl.utils.py_functional import append_to_dict
-from verl.utils.torch_functional import logprobs_from_logits, broadcast_dict_tensor, split_dict_tensor_into_batches
+from verl.utils.torch_functional import broadcast_dict_tensor, split_dict_tensor_into_batches
 
 __all__ = ['MegatronPPOActor']
 
@@ -326,7 +326,7 @@ class MegatronPPOActor(BasePPOActor):
         # loss_reduces contains the stats returned from loss_func
         return losses_reduced
 
-    def update_policy(self, dataloader: Iterable[DataProto]) -> Dict:
+    def update_policy(self, dataloader: Iterable[DataProto]) -> dict:
         """Update the policy with an iterator of DataProto
 
         Args:

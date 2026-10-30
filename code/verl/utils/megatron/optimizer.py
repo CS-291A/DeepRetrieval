@@ -44,7 +44,7 @@ def get_megatron_optimizer(
     elif config.optimizer == 'sgd':
         optimizer = SGD(param_groups, lr=config.lr, weight_decay=config.weight_decay, momentum=config.sgd_momentum)
     else:
-        raise Exception('{} optimizer is not supported.'.format(config.optimizer))
+        raise Exception(f'{config.optimizer} optimizer is not supported.')
 
     # Determine whether the params have main-grad field.
     params_have_main_grad = True

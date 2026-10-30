@@ -1,8 +1,6 @@
 import json
 import sys
-import os
 from tqdm import tqdm
-import pdb
 sys.path.append('./')
 
 from src.Dense.scifact.search import FaissHNSWSearcher

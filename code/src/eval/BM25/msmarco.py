@@ -18,7 +18,6 @@ import re
 
 # Add these at the top with other global variables
 from pyserini.search.lucene import LuceneSearcher
-from tqdm import tqdm
 from src.Lucene.utils import ndcg_at_k
 
 
@@ -33,6 +32,8 @@ def get_searcher(mode='sparse'):
         if not os.path.exists(index_dir):
             # print("[Warning] Pyserini index not found for scifact")
             _searcher = LuceneSearcher.from_prebuilt_index('msmarco-v1-passage')
+            if _searcher is None:  # pyserini prints the reason and returns None
+                raise RuntimeError("pyserini could not load the prebuilt index 'msmarco-v1-passage'")
         else:
             _searcher = LuceneSearcher(index_dir=index_dir)
     return _searcher
@@ -70,11 +71,15 @@ def extract_solution(solution_str):
 def retriver_items(query, top_k=3000, mode='sparse'):
     """Retrieve items from the search system."""
     searcher = get_searcher(mode=mode)
+    if searcher is None:
+        raise ValueError(f"no searcher for mode={mode!r}; only 'sparse' builds one")
     hits = searcher.search(query, k=top_k)
     if mode == 'sparse':
         doc_list = [json.loads(hit.lucene_document.get('raw'))['id'] for hit in hits]
     elif mode == 'dense':
         doc_list = [hit.docid for hit in hits]
+    else:
+        raise ValueError(f"unknown mode {mode!r}")
     return doc_list
 
 
@@ -106,6 +111,8 @@ def evaluate_model(model, tokenizer, data_path, device, model_name, save_dir, ba
                 # convert target from ndarray to list
                 
                 extracted_solution, processed_str = extract_solution(generated_text)
+                if extracted_solution is None:  # no <answer> block: scored as a failed query below
+                    raise ValueError("no <answer> block in the generated text")
                 query = json.loads(extracted_solution)['query']
                 # query = query.lower()
                 print(query)

@@ -14,11 +14,11 @@
 
 import torch
 from verl.utils.model import create_random_mask, compute_position_id_with_mask
-from verl.utils.torch_functional import masked_mean, log_probs_from_logits_all_rmpad, logprobs_from_logits
-from flash_attn.bert_padding import unpad_input, pad_input, index_first_axis, rearrange
+from verl.utils.torch_functional import masked_mean, log_probs_from_logits_all_rmpad
+from flash_attn.bert_padding import unpad_input, pad_input, index_first_axis, rearrange  # pyright: ignore[reportMissingImports]  # flash_attn is Linux/CUDA-only (gpu extra)
 
 from transformers import LlamaConfig, MistralConfig, GemmaConfig, Qwen2Config
-from transformers import AutoModelForCausalLM, AutoModelForTokenClassification, AutoModelForSequenceClassification
+from transformers import AutoModelForCausalLM, AutoModelForTokenClassification
 # TODO(sgm): add more models for test
 # we only need one scale for each model
 test_configs = [
@@ -85,7 +85,7 @@ def test_hf_casual_models():
                                    masked_mean(origin_log_probs, attention_mask[:, -response_length - 1:-1]),
                                    atol=1e-2,
                                    rtol=1e-5)
-    print(f'Check pass')
+    print('Check pass')
 
 
 def test_hf_value_models():

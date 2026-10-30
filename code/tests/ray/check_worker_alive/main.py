@@ -15,6 +15,7 @@
 import time
 import sys
 import os
+from typing import Any
 
 import ray
 
@@ -41,12 +42,12 @@ if __name__ == "__main__":
     ray.init()
 
     # test single-node-no-partition
-    print(f"test single-node-no-partition")
+    print("test single-node-no-partition")
     resource_pool = RayResourcePool([2], use_gpu=True)
     class_with_args = RayClassWithInitArgs(cls=TestActor)
 
     print("create worker group")
-    wg = RayWorkerGroup(resource_pool, class_with_args, name_prefix="test")
+    wg: Any = RayWorkerGroup(resource_pool, class_with_args, name_prefix="test")  # worker methods are bound onto the group at runtime
 
     wg.start_worker_aliveness_check(1)
     time.sleep(1)

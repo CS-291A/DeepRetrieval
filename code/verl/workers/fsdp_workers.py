@@ -21,7 +21,7 @@ import warnings
 
 import torch
 import torch.distributed
-import verl.utils.hdfs_io as hdfs_io
+from verl.utils import hdfs_io
 import verl.utils.torch_functional as verl_F
 from omegaconf import DictConfig, open_dict
 from verl import DataProto
@@ -63,7 +63,7 @@ class ActorRolloutRefWorker(Worker):
         world_size = torch.distributed.get_world_size()
         from torch.distributed.device_mesh import init_device_mesh
         # TODO(sgm): support FSDP hybrid shard for larger model
-        self.device_mesh = init_device_mesh('cuda', mesh_shape=(world_size,), mesh_dim_names=['fsdp'])
+        self.device_mesh = init_device_mesh('cuda', mesh_shape=(world_size,), mesh_dim_names=('fsdp',))
 
         # build device mesh for Ulysses Sequence Parallel
         self.ulysses_device_mesh = None
@@ -72,7 +72,7 @@ class ActorRolloutRefWorker(Worker):
         if self.ulysses_sequence_parallel_size > 1:
             self.ulysses_device_mesh = init_device_mesh('cuda',
                                                         mesh_shape=(dp, self.ulysses_sequence_parallel_size),
-                                                        mesh_dim_names=['dp', 'sp'])
+                                                        mesh_dim_names=('dp', 'sp'))
 
         self.ulysses_sharding_manager = FSDPUlyssesShardingManager(self.ulysses_device_mesh)
 
@@ -228,7 +228,7 @@ class ActorRolloutRefWorker(Worker):
         # TODO: add more optimizer args into config
         if self._is_actor:
             from verl.utils.torch_functional import get_constant_schedule_with_warmup
-            actor_optimizer = optim.AdamW(actor_module_fsdp.parameters(),
+            actor_optimizer = optim.AdamW(actor_module_fsdp.parameters(),  # pyright: ignore[reportPrivateImportUsage]  # torch 2.4 optim/__init__ has no __all__; AdamW is public API
                                           lr=optim_config.lr,
                                           betas=optim_config.get('betas', (0.9, 0.999)),
                                           weight_decay=optim_config.get('weight_decay', 1e-2))
@@ -255,7 +255,7 @@ class ActorRolloutRefWorker(Worker):
         infer_tp = self.config.rollout.tensor_model_parallel_size
         dp = self.world_size // infer_tp
         assert self.world_size % infer_tp == 0, f'rollout world_size: {self.world_size} is not divisible by infer_tp: {infer_tp}'
-        rollout_device_mesh = init_device_mesh('cuda', mesh_shape=(dp, infer_tp), mesh_dim_names=['dp', 'infer_tp'])
+        rollout_device_mesh = init_device_mesh('cuda', mesh_shape=(dp, infer_tp), mesh_dim_names=('dp', 'infer_tp'))
 
         if self.config.rollout.name == 'hf':
             from verl.workers.rollout import HFRollout
@@ -274,12 +274,15 @@ class ActorRolloutRefWorker(Worker):
             log_gpu_memory_usage('After building vllm rollout', logger=None)
             if torch.distributed.get_world_size() == 1:
                 self.config.rollout.load_format = 'dummy_hf'
+            assert FSDPVLLMShardingManager is not None, 'rollout.name=vllm needs vllm (uv sync --extra gpu)'
             rollout_sharding_manager = FSDPVLLMShardingManager(module=self.actor_module_fsdp,
                                                                inference_engine=rollout.inference_engine,
                                                                model_config=self.actor_model_config,
                                                                full_params='hf' in self.config.rollout.load_format,
                                                                device_mesh=rollout_device_mesh)
             log_gpu_memory_usage('After building sharding manager', logger=None)
+        else:
+            raise NotImplementedError(f"Unknown rollout name {self.config.rollout.name!r}; expected 'hf' or 'vllm'")
 
         return rollout, rollout_sharding_manager
 
@@ -380,6 +383,7 @@ class ActorRolloutRefWorker(Worker):
             estimated_flops, promised_flops = self.flops_counter.estimate_flops(global_num_tokens, delta_time)
             metrics['mfu/actor'] = estimated_flops * self.config.actor.ppo_epochs / promised_flops / self.world_size
 
+            assert self.actor_lr_scheduler is not None, 'built together with the optimizer for the actor role'
             self.actor_lr_scheduler.step()
             lr = self.actor_lr_scheduler.get_last_lr()[0]
             metrics['actor/lr'] = lr
@@ -525,7 +529,7 @@ class CriticWorker(Worker):
         if self.ulysses_sequence_parallel_size > 1:
             self.ulysses_device_mesh = init_device_mesh('cuda',
                                                         mesh_shape=(dp, self.ulysses_sequence_parallel_size),
-                                                        mesh_dim_names=['dp', 'sp'])
+                                                        mesh_dim_names=('dp', 'sp'))
 
         self.ulysses_sharding_manager = FSDPUlyssesShardingManager(self.ulysses_device_mesh)
 
@@ -542,7 +546,7 @@ class CriticWorker(Worker):
 
     def _build_critic_model_optimizer(self, config):
         # the following line is necessary
-        from verl.utils.model import LambdaLayer, print_model_size, squeeze
+        from verl.utils.model import print_model_size
         from verl.utils.torch_dtypes import PrecisionType
         from torch.distributed.fsdp import FullyShardedDataParallel as FSDP, ShardingStrategy, MixedPrecision
         from torch import optim
@@ -556,11 +560,12 @@ class CriticWorker(Worker):
 
         from omegaconf import OmegaConf
         override_config = OmegaConf.to_container(self.config.model.get('override_config', OmegaConf.create()))
-        override_config_kwargs = {
+        override_config_kwargs: dict = {
             'bos_token_id': self.tokenizer.bos_token_id,
             'eos_token_id': self.tokenizer.eos_token_id,
             'pad_token_id': self.tokenizer.pad_token_id,
         }
+        assert isinstance(override_config, dict), f'critic model.override_config must be a mapping, got {override_config!r}'
         override_config_kwargs.update(override_config)
         if self.rank == 0:
             print(f'Critic overriding config {override_config_kwargs}')
@@ -569,7 +574,6 @@ class CriticWorker(Worker):
         torch_dtype = PrecisionType.to_dtype(torch_dtype)
 
         from transformers import AutoConfig, AutoModelForTokenClassification
-        from torch import nn
 
         trust_remote_code = False
         critic_model_config = AutoConfig.from_pretrained(local_path, trust_remote_code=trust_remote_code)
@@ -587,8 +591,8 @@ class CriticWorker(Worker):
         init_context = get_init_weight_context_manager()
         with init_context(), warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            setattr(critic_model_config, 'classifier_dropout', 0.)
-            setattr(critic_model_config, 'hidden_dropout', '0')
+            critic_model_config.classifier_dropout = 0.0
+            critic_model_config.hidden_dropout = '0'
             critic_module = AutoModelForTokenClassification.from_pretrained(pretrained_model_name_or_path=local_path,
                                                                             torch_dtype=torch_dtype,
                                                                             config=critic_model_config,
@@ -634,7 +638,7 @@ class CriticWorker(Worker):
 
         log_gpu_memory_usage('After critic FSDP', logger=None)
 
-        critic_optimizer = optim.AdamW(critic_module.parameters(),
+        critic_optimizer = optim.AdamW(critic_module.parameters(),  # pyright: ignore[reportPrivateImportUsage]  # torch 2.4 optim/__init__ has no __all__; AdamW is public API
                                        lr=config.optim.lr,
                                        betas=config.optim.get('betas', (0.9, 0.999)),
                                        weight_decay=config.optim.get('weight_decay', 1e-2))
@@ -787,7 +791,7 @@ class RewardModelWorker(Worker):
         if self.ulysses_sequence_parallel_size > 1:
             self.ulysses_device_mesh = init_device_mesh('cuda',
                                                         mesh_shape=(dp, self.ulysses_sequence_parallel_size),
-                                                        mesh_dim_names=['dp', 'sp'])
+                                                        mesh_dim_names=('dp', 'sp'))
 
         self.ulysses_sharding_manager = FSDPUlyssesShardingManager(self.ulysses_device_mesh)
 
@@ -829,7 +833,7 @@ class RewardModelWorker(Worker):
 
         with init_context(), warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            setattr(model_config, 'classifier_dropout', 0.)
+            model_config.classifier_dropout = 0.0
             reward_module = AutoModelForTokenClassification.from_pretrained(pretrained_model_name_or_path=local_path,
                                                                             config=model_config,
                                                                             torch_dtype=torch.bfloat16,
@@ -860,7 +864,7 @@ class RewardModelWorker(Worker):
 
     def _forward_micro_batch(self, micro_batch):
         try:
-            from flash_attn.bert_padding import pad_input, unpad_input, index_first_axis, rearrange
+            from flash_attn.bert_padding import pad_input, unpad_input, index_first_axis, rearrange  # pyright: ignore[reportMissingImports]  # flash-attn is Linux/CUDA-only (gpu extra)
         except ImportError as e:
             raise flash_attn_import_error('RewardModelWorker') from e
         from verl.utils.ulysses import ulysses_pad_and_slice_inputs, gather_outpus_and_unpad
@@ -881,6 +885,7 @@ class RewardModelWorker(Worker):
                                                       indices).transpose(0, 1)
 
                 # pad and slice the inputs if sp > 1
+                pad_size = 0  # only read when ulysses_sequence_parallel_size > 1
                 if self.ulysses_sequence_parallel_size > 1:
                     input_ids_rmpad, position_ids_rmpad, pad_size = ulysses_pad_and_slice_inputs(input_ids_rmpad, \
                                                                                                 position_ids_rmpad, \
@@ -994,6 +999,13 @@ class RewardModelWorker(Worker):
         data = data.to('cuda')
         if self._do_switch_chat_template:
             rm_data = self._switch_chat_template(data)
+        else:
+            # same tokenizer as the policy: score the rollout batch as is
+            rm_data = DataProto.from_dict({
+                'input_ids': data.batch['input_ids'],
+                'attention_mask': data.batch['attention_mask'],
+                'position_ids': data.batch['position_ids'],
+            })
 
         rm_data.batch = rm_data.batch.cuda()
 
@@ -1003,6 +1015,7 @@ class RewardModelWorker(Worker):
             data = self.ulysses_sharding_manager.preprocess_data(data=data)
 
             use_dynamic_bsz = self.config.use_dynamic_bsz
+            indices: list[list[int]] = []  # only read when use_dynamic_bsz
             if use_dynamic_bsz:
                 max_token_len = self.config.forward_max_token_len_per_gpu * self.ulysses_sequence_parallel_size
                 micro_batches, indices = rearrange_micro_batches(batch=rm_data.batch, max_token_len=max_token_len)
@@ -1015,9 +1028,9 @@ class RewardModelWorker(Worker):
             scores = torch.cat(output, dim=0)  # (batch_size)
 
             if use_dynamic_bsz:
-                indices = list(itertools.chain.from_iterable(indices))
-                assert len(indices) == scores.size(0), f"{len(indices)} vs. {scores.size()}"
-                revert_indices = torch.tensor(get_reverse_idx(indices), dtype=torch.long)
+                flat_indices = list(itertools.chain.from_iterable(indices))
+                assert len(flat_indices) == scores.size(0), f"{len(flat_indices)} vs. {scores.size()}"
+                revert_indices = torch.tensor(get_reverse_idx(flat_indices), dtype=torch.long)
                 scores = scores[revert_indices]
 
             token_level_scores = self._expand_to_token_level(data, scores)

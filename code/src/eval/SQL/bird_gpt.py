@@ -2,8 +2,6 @@ import sys
 import os
 import argparse
 import pandas as pd
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
 from tqdm import tqdm
 import json
 import re
@@ -13,7 +11,6 @@ project_root = os.path.dirname(os.path.dirname(current_dir))
 sys.path.insert(0, project_root)
 
 from src.sql.bird import BirdDatabaseSearcher
-from src.utils.gpt_azure import gpt_chat_4o, gpt_chat_35_msg
 from src.utils.gpt import gpt_chat
 from src.utils.claude_api import get_claude_response
 
@@ -80,6 +77,8 @@ def calculate_execution_score(pred_sql, gold_sql, db_path):
         gold_results = execute_sql(gold_sql, db_path)
         
         # Compare results as sets to ignore order
+        if pred_results is None or gold_results is None:  # timed out: scored 0 below, never a match
+            raise TimeoutError("SQL execution timed out")
         execution_score = 1.0 if set(pred_results) == set(gold_results) else 0.0
         
     except Exception as e:
@@ -157,7 +156,7 @@ def evaluate_model(llm_name, data_path, save_dir, with_reasoning=True):
     
     # Calculate and print final metrics
     final_accuracy = sum(execution_scores) / len(execution_scores)
-    print(f"\nFinal Results:")
+    print("\nFinal Results:")
     print(f"Execution Accuracy: {final_accuracy:.4f}")
     print(f"Error Count: {error_count}")
     

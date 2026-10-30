@@ -2,7 +2,6 @@ import json
 import sys
 import os
 from tqdm import tqdm
-import pdb
 sys.path.append('./')
 
 from pyserini.search.lucene import LuceneSearcher
@@ -18,6 +17,8 @@ def get_searcher(mode='sparse'):
         if not os.path.exists(index_dir):
             # print("[Warning] Pyserini index not found for scifact")
             _searcher = LuceneSearcher.from_prebuilt_index('msmarco-v1-passage')
+            if _searcher is None:  # pyserini prints the reason and returns None
+                raise RuntimeError("pyserini could not load the prebuilt index 'msmarco-v1-passage'")
         else:
             _searcher = LuceneSearcher(index_dir=index_dir)
     return _searcher
@@ -54,11 +55,15 @@ def load_matching_dataset(domain):
 def retriver_items(query, top_k=3000, mode='sparse'):
     """Retrieve items from the search system."""
     searcher = get_searcher(mode=mode)
+    if searcher is None:
+        raise ValueError(f"no searcher for mode={mode!r}; only 'sparse' builds one")
     hits = searcher.search(query, k=top_k)
     if mode == 'sparse':
         doc_list = [json.loads(hit.lucene_document.get('raw'))['id'] for hit in hits]
     elif mode == 'dense':
         doc_list = [hit.docid for hit in hits]
+    else:
+        raise ValueError(f"unknown mode {mode!r}")
     return doc_list
 
 
@@ -69,7 +74,7 @@ if __name__ == '__main__':
         ndcg = []
         train_data, test_data, val_data = load_matching_dataset(domain)
 
-        for i in tqdm(range(0, len(test_data))):
+        for i in tqdm(range(len(test_data))):
             query = test_data[i]['input']
             label = test_data[i]['label']
             targets = [str(l) for l in label]

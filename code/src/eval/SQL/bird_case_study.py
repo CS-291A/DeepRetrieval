@@ -67,6 +67,8 @@ def calculate_execution_score(pred_sql, gold_sql, db_path):
         gold_results = execute_sql(gold_sql, db_path)
         
         # Compare results as sets to ignore order
+        if pred_results is None or gold_results is None:  # timed out: scored 0 below, never a match
+            raise TimeoutError("SQL execution timed out")
         execution_score = 1.0 if set(pred_results) == set(gold_results) else 0.0
         
     except Exception as e:
@@ -166,7 +168,7 @@ def evaluate_model(model, tokenizer, data_path, device, model_name, save_dir, ba
     
     # Calculate and print final metrics
     final_accuracy = sum(execution_scores) / len(execution_scores)
-    print(f"\nFinal Results:")
+    print("\nFinal Results:")
     print(f"Execution Accuracy: {final_accuracy:.4f}")
     print(f"Error Count: {error_count}")
     

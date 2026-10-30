@@ -2,12 +2,10 @@ import json
 import sys
 import os
 from tqdm import tqdm
-import pdb
 sys.path.append('./')
 
 from src.eval.BM25.utils import parse_qrel
 from src.Dense.msmarco_beir.search import PyseriniFaissSearcher
-from pyserini.search.faiss import AutoQueryEncoder
 from src.Lucene.utils import ndcg_at_k
 
 index_path = 'data/local_index_search/msmarco_beir/dense_index/faiss-flat.msmarco-v1-passage.bge-base-en-v1.5.20240107'
@@ -50,6 +48,8 @@ if __name__ == '__main__':
         targets = {item['query']: item['target'] for item in batch} 
         scores = {item['query']: item['score'] for item in batch}
         
+        if search_system is None:
+            raise FileNotFoundError("Faiss index not found for msmarco_beir")
         results = search_system.batch_search(queries, top_k=10, threads=32)
 
         for idx, query in enumerate(queries):

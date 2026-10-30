@@ -32,8 +32,8 @@ def test_memory_buffers():
                                num_attention_heads=16,
                                num_key_value_heads=16)
 
-    model = LlamaModel(config=llama_config).cuda()
-    model_copy = LlamaModel(config=llama_config).cuda()
+    model = LlamaModel(config=llama_config).cuda()  # pyright: ignore[reportCallIssue]  # transformers wraps cuda with functools.wraps(nn.Module.cuda), hiding the bound self
+    model_copy = LlamaModel(config=llama_config).cuda()  # pyright: ignore[reportCallIssue]  # transformers wraps cuda with functools.wraps(nn.Module.cuda), hiding the bound self
     model_copy.load_state_dict(model.state_dict())
 
     model_named_params = dict(model.named_parameters())

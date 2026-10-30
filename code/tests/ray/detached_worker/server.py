@@ -16,12 +16,14 @@ Server starts a Trainer. Client sends data to the server to train.
 """
 
 import os
+from typing import Any
 
 os.environ['MEGATRON_USE_CUDA_TIMER'] = '0'
 os.environ['MEGATRON_START_PROCESS_TIMER'] = 'False'
 os.environ['NCCL_DEBUG'] = 'WARN'
 
 import torch
+import torch.distributed
 from torch import nn
 
 import ray
@@ -32,9 +34,9 @@ from verl.single_controller.base.decorator import register, Dispatch
 from verl import DataProto
 from verl.models.llama.megatron import ParallelLlamaForCausalLMRmPadPP
 
-from megatron.core import parallel_state as mpu
-from megatron.core.models.gpt.gpt_model import ModelType
-from megatron.core import tensor_parallel
+from megatron.core import parallel_state as mpu  # pyright: ignore[reportMissingImports]  # megatron is not in the lock (upstream Megatron strategy)
+from megatron.core.models.gpt.gpt_model import ModelType  # pyright: ignore[reportMissingImports]  # megatron is not in the lock (upstream Megatron strategy)
+from megatron.core import tensor_parallel  # pyright: ignore[reportMissingImports]  # megatron is not in the lock (upstream Megatron strategy)
 from verl.utils.megatron_utils import get_model, init_megatron_optim_config, init_model_parallel_config
 from verl.utils.megatron.optimizer import get_megatron_optimizer
 
@@ -109,7 +111,7 @@ class Trainer(MegatronWorker):
 
         optim_config = OmegaConf.create({'lr': 1e-6, 'clip_grad': 1.0})
 
-        optim_config = init_megatron_optim_config(optim_config)
+        optim_config = init_megatron_optim_config(optim_config)  # pyright: ignore[reportArgumentType]  # megatron_utils (Megatron-only, excluded from analysis) annotates Dict but reads a DictConfig
         self.optimizer_config = optim_config
         actor_optimizer = get_megatron_optimizer(model=actor_module, config=optim_config)
 
@@ -141,7 +143,7 @@ if __name__ == '__main__':
 
     resource_pool = RayResourcePool(process_on_nodes=[2], detached=True)
     cls_with_init_args = RayClassWithInitArgs(cls=Trainer)
-    worker_group = NVMegatronRayWorkerGroup(
+    worker_group: Any = NVMegatronRayWorkerGroup(  # worker methods are bound onto the group at runtime
         resource_pool=resource_pool,
         ray_cls_with_init=cls_with_init_args,
         name_prefix='trainer',

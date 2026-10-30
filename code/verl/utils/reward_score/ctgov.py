@@ -1,6 +1,5 @@
 import re
 import random
-import os
 import json
 import logging
 import time
@@ -200,9 +199,9 @@ def compute_score(solution_str, ground_truth, format_reward=1, answer_reward=1.,
 
     
     if do_print:
-        print(f"--------------------------------")
+        print("--------------------------------")
         print(f"Solution string: {solution_str}")
-        print(f"Target: {str(label)} |")
+        print(f"Target: {label!s} |")
     
     answer_score = 0
     if format_correct and answer_text:
@@ -211,7 +210,7 @@ def compute_score(solution_str, ground_truth, format_reward=1, answer_reward=1.,
     total_score = format_score + answer_score
     if do_print:
         print("\n" + "-"*80)
-        print(f" Final Score ".center(80, '-'))
+        print(" Final Score ".center(80, '-'))
         print(f"  Format: {format_score}")
         print(f"  Answer: {answer_score}")
         print(f"  Total: {total_score}")

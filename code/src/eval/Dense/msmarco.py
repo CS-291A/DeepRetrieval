@@ -17,8 +17,9 @@ import json
 import re
 
 # Add these at the top with other global variables
-from pyserini.search.faiss import FaissSearcher, AutoQueryEncoder
-from tqdm import tqdm
+from typing import cast
+
+from pyserini.search.faiss import FaissSearcher, AutoQueryEncoder, DenseSearchResult
 from src.Lucene.utils import ndcg_at_k
 
 
@@ -32,8 +33,9 @@ def get_searcher(mode='dense'):
     global _searcher
     if _searcher is None and mode == 'dense':
         if not os.path.exists(index_dir):
-            print("[Warning] Pyserini index not found")
-            _searcher = FaissSearcher.from_prebuilt_index('msmarco-v1-passage', None)
+            # pyserini has no prebuilt FAISS index named 'msmarco-v1-passage' and this fallback passed no
+            # query encoder, so it could never build a searcher.
+            raise FileNotFoundError(f"dense index not found at {index_dir}; set index_dir to your FAISS index")
         else:
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
             if 'contriever' in query_encoder_name:
@@ -76,11 +78,11 @@ def extract_solution(solution_str):
 def retriver_items(query, top_k=3000, mode='dense'):
     """Retrieve items from the search system."""
     searcher = get_searcher(mode=mode)
-    hits = searcher.search(query, k=top_k)
-    if mode == 'sparse':
-        doc_list = [json.loads(hit.lucene_document.get('raw'))['id'] for hit in hits]
-    elif mode == 'dense':
-        doc_list = [hit.docid for hit in hits]
+    if searcher is None or mode != 'dense':  # get_searcher only builds the FAISS searcher
+        raise ValueError(f"only mode='dense' is supported, got {mode!r}")
+    # search() returns (vectors, hits) only when return_vector=True
+    hits = cast(list[DenseSearchResult], searcher.search(query, k=top_k))
+    doc_list = [hit.docid for hit in hits]
     return doc_list
 
 
@@ -112,6 +114,8 @@ def evaluate_model(model, tokenizer, data_path, device, model_name, save_dir, ba
                 # convert target from ndarray to list
                 
                 extracted_solution, processed_str = extract_solution(generated_text)
+                if extracted_solution is None:  # no <answer> block: scored as a failed query below
+                    raise ValueError("no <answer> block in the generated text")
                 query = json.loads(extracted_solution)['query']
                 # query = query.lower()
                 print(query)

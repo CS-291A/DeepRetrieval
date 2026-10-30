@@ -1,17 +1,14 @@
 import re
 import random
-import os
 import json
 import logging
 try:
     import utils.java_init  # noqa: F401  (imported for its side effect: sets JAVA_HOME)
 except ImportError:
     print("Failed to import java_init")
-    pass
 
 from pyserini.search.lucene import LuceneSearcher
 from pyserini.eval.evaluate_dpr_retrieval import has_answers, SimpleTokenizer
-from src.Lucene.utils import ndcg_for_rank
 
 
 # Instead of initializing at import time, we'll create a global variable but initialize it later
@@ -127,6 +124,7 @@ def extract_json_from_llm_output(text):
 def run_index_search_bm25(search_query, topk=50):
     
     searcher = get_searcher()
+    assert searcher is not None, "pyserini could not load the prebuilt 'wikipedia-dpr-100w' index"
     
     # Rate limit checking
     hits = searcher.search(search_query, k=topk)
@@ -210,9 +208,9 @@ def compute_score(solution_str, ground_truth):
     format_score = 1 if format_correct else -4
 
     if do_print:
-        print(f"--------------------------------")
+        print("--------------------------------")
         print(f"Solution string: {solution_str}")
-        print(f"Target: {str(label)} |")
+        print(f"Target: {label!s} |")
     
     answer_score = 0
     if format_correct and answer_text:
@@ -222,7 +220,7 @@ def compute_score(solution_str, ground_truth):
 
     if do_print:
         print("\n" + "-"*80)
-        print(f" Final Score ".center(80, '-'))
+        print(" Final Score ".center(80, '-'))
         print(f"  Format: {format_score}")
         print(f"  Answer: {answer_score}")
         print(f"  Total: {total_score}")

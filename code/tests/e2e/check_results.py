@@ -44,8 +44,7 @@ if __name__ == '__main__':
     for line in output:
         if line.startswith('step'):
             reward = extract_reward_from_line(line)
-            if reward > best_reward:
-                best_reward = reward
+            best_reward = max(best_reward, reward)
 
     print(f'Best reward is {best_reward}')
     assert best_reward > 0.2, f'Best reward must be greater than 0.2. best_reward: {best_reward}'

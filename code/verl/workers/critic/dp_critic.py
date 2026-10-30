@@ -15,11 +15,11 @@
 Implement a multiprocess PPOCritic
 """
 import itertools
-from typing import Iterable
 
 import torch
 import torch.distributed
-from torch import nn, optim
+from torch import nn
+from torch.optim.optimizer import Optimizer
 
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 
@@ -34,7 +34,7 @@ from verl.utils.seqlen_balancing import rearrange_micro_batches, get_reverse_idx
 from verl.utils.import_utils import flash_attn_import_error
 
 try:
-    from flash_attn.bert_padding import pad_input, unpad_input, rearrange, index_first_axis
+    from flash_attn.bert_padding import pad_input, unpad_input, rearrange, index_first_axis  # pyright: ignore[reportMissingImports]  # flash-attn is Linux/CUDA-only (gpu extra)
 except ImportError as e:
     raise flash_attn_import_error('DataParallelPPOCritic') from e
 
@@ -43,7 +43,7 @@ __all__ = ['DataParallelPPOCritic']
 
 class DataParallelPPOCritic(BasePPOCritic):
 
-    def __init__(self, config, critic_module: nn.Module, critic_optimizer: optim.Optimizer):
+    def __init__(self, config, critic_module: nn.Module, critic_optimizer: Optimizer):
         super().__init__(config=config)
         self.critic_module = critic_module
         self.critic_optimizer = critic_optimizer
@@ -74,6 +74,7 @@ class DataParallelPPOCritic(BasePPOCritic):
                                                       indices).transpose(0, 1)
 
                 # pad and slice the inputs if sp > 1
+                pad_size = 0  # only read when ulysses_sequence_parallel_size > 1
                 if self.ulysses_sequence_parallel_size > 1:
                     input_ids_rmpad, position_ids_rmpad, pad_size = ulysses_pad_and_slice_inputs(input_ids_rmpad, \
                                                                                                 position_ids_rmpad, \
@@ -123,6 +124,7 @@ class DataParallelPPOCritic(BasePPOCritic):
         batch = data.select(batch_keys=select_keys).batch
         use_dynamic_bsz = data.meta_info['use_dynamic_bsz']
 
+        indices: list[list[int]] = []  # only read when use_dynamic_bsz
         if use_dynamic_bsz:
             # split using dynamic bsz
             max_token_len = data.meta_info['max_token_len'] * self.ulysses_sequence_parallel_size
@@ -142,9 +144,9 @@ class DataParallelPPOCritic(BasePPOCritic):
         values = values * attention_mask[:, -response_length - 1:-1]
 
         if use_dynamic_bsz:
-            indices = list(itertools.chain.from_iterable(indices))
-            assert len(indices) == values.size(0), f"{len(indices)} vs. {values.size()}"
-            revert_indices = torch.tensor(get_reverse_idx(indices), dtype=torch.long)
+            flat_indices = list(itertools.chain.from_iterable(indices))
+            assert len(flat_indices) == values.size(0), f"{len(flat_indices)} vs. {values.size()}"
+            revert_indices = torch.tensor(get_reverse_idx(flat_indices), dtype=torch.long)
             values = values[revert_indices]
 
         return values
@@ -160,9 +162,8 @@ class DataParallelPPOCritic(BasePPOCritic):
         # See PPO paper for details. https://arxiv.org/abs/1707.06347
         dataloader = batch.split(self.config.ppo_mini_batch_size)
 
-        for batch_idx, data in enumerate(dataloader):
+        for batch_idx, mini_batch in enumerate(dataloader):
             # split batch into micro_batches
-            mini_batch = data
             if self.config.use_dynamic_bsz:
                 max_token_len = self.config.ppo_max_token_len_per_gpu * self.ulysses_sequence_parallel_size
                 micro_batches, _ = rearrange_micro_batches(batch=mini_batch, max_token_len=max_token_len)
@@ -171,19 +172,19 @@ class DataParallelPPOCritic(BasePPOCritic):
 
             self.critic_optimizer.zero_grad()
 
-            for data in micro_batches:
-                data = data.cuda()  # critic device is cpu when using offload
-                input_ids = data['input_ids']
-                responses = data['responses']
-                attention_mask = data['attention_mask']
-                position_ids = data['position_ids']
-                values = data['values']
-                returns = data['returns']
+            for micro_batch in micro_batches:
+                micro_batch = micro_batch.cuda()  # critic device is cpu when using offload
+                input_ids = micro_batch['input_ids']
+                responses = micro_batch['responses']
+                attention_mask = micro_batch['attention_mask']
+                position_ids = micro_batch['position_ids']
+                values = micro_batch['values']
+                returns = micro_batch['returns']
                 response_length = responses.size(1)
 
                 eos_mask = attention_mask[:, -response_length - 1:-1]
 
-                vpreds = self._forward_micro_batch(data)
+                vpreds = self._forward_micro_batch(micro_batch)
 
                 # assert not torch.any(torch.isnan(vpreds)).item()
 
@@ -198,16 +199,15 @@ class DataParallelPPOCritic(BasePPOCritic):
                 # one device-to-host sync for all per-micro-batch scalars
                 vf_loss_value, vf_clipfrac_value, vpred_mean = scalars_to_floats(
                     [vf_loss, vf_clipfrac, masked_mean(vpreds, eos_mask)])
-                data = {
+                micro_metrics = {
                     'critic/vf_loss': vf_loss_value,
                     'critic/vf_clipfrac': vf_clipfrac_value,
                     'critic/vpred_mean': vpred_mean,
                 }
 
-                append_to_dict(metrics, data)
+                append_to_dict(metrics, micro_metrics)
 
             grad_norm = self._optimizer_step()
-            data = {'critic/grad_norm': grad_norm.detach().item()}
-            append_to_dict(metrics, data)
+            append_to_dict(metrics, {'critic/grad_norm': grad_norm.detach().item()})
         self.critic_optimizer.zero_grad()
         return metrics

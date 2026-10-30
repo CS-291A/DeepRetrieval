@@ -47,6 +47,7 @@ def empty_cwd(tmp_path, monkeypatch):
 def test_client_module_imports_without_key_files(monkeypatch, empty_cwd, relpath, stubs):
     module = load_script(monkeypatch, relpath, stubs)
 
+    assert module.__file__ is not None
     assert module.__file__.endswith(relpath)
 
 

@@ -54,7 +54,7 @@ class AllGatherPPModel:
         self.memory_buffers = [None] * self.pp_size
         for cur_pp_rank in rank_list:
             print(
-                f'create pp model', f'torch allocated {torch.cuda.memory_allocated() / 1e9:.4f} GB, '
+                'create pp model', f'torch allocated {torch.cuda.memory_allocated() / 1e9:.4f} GB, '
                 f'reserved {torch.cuda.memory_reserved() / 1e9:.4f} GB')
             # since the last initialized rank is the current pp rank, after init, the pp rank is still correct
             mpu.set_pipeline_model_parallel_rank(cur_pp_rank)
@@ -219,8 +219,6 @@ Megatron Hybrid Engine:
 
 from .base import BaseShardingManager
 
-import torch
-from torch import nn
 import torch.distributed
 from torch.distributed import new_group
 

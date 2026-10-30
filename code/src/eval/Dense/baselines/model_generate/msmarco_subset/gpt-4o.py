@@ -3,7 +3,6 @@ import os
 import argparse
 from tqdm import tqdm
 import sys
-import pdb
 import json
 import numpy as np
 
@@ -17,7 +16,7 @@ from src.utils.gpt_azure import gpt_chat_4o, gpt_chat_4omini
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model_name', type=str, default='gpt-4o')
+    parser.add_argument('--model_name', type=str, default='gpt-4o', choices=['gpt-4o-mini', 'gpt-4o'])
     parser.add_argument('--save_dir', type=str, default='../results')
     parser.add_argument("--data_path", type=str, default="data/local_index_search/msmarco_tech/sparse/test.parquet")
     parser.add_argument('--dataset', type=str, default='msmarco_tech')
@@ -62,6 +61,7 @@ if __name__ == '__main__':
 
         prompt = prompt.replace("{", "(")
         prompt = prompt.replace("}", ")")
+        decoded = ""  # recorded when every attempt fails, so a failure scores 0
         attempts = 0
         while attempts < 10:
             try:

@@ -17,13 +17,12 @@ We assume package availability won't change during runtime.
 """
 
 from functools import cache
-from typing import List
 
 
 @cache
 def is_megatron_core_available():
     try:
-        from megatron.core import parallel_state as mpu
+        from megatron.core import parallel_state as mpu  # pyright: ignore[reportMissingImports]  # megatron is Linux/CUDA-only, not in the lock
         return True
     except ImportError:
         return False
@@ -32,7 +31,7 @@ def is_megatron_core_available():
 @cache
 def is_vllm_available():
     try:
-        import vllm
+        import vllm  # pyright: ignore[reportMissingImports]  # vllm is Linux/CUDA-only (gpu extra)
         return True
     except ImportError:
         return False
@@ -47,7 +46,7 @@ def flash_attn_import_error(component: str) -> ImportError:
 def import_external_libs(external_libs=None):
     if external_libs is None:
         return
-    if not isinstance(external_libs, List):
+    if not isinstance(external_libs, list):
         external_libs = [external_libs]
     import importlib
     for external_lib in external_libs:

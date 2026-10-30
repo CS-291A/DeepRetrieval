@@ -19,7 +19,6 @@ The output will contain
 3. eos_masks
 4. log_probs
 """
-from typing import Iterable, Union
 
 import torch
 import torch.nn.functional as F
@@ -100,12 +99,12 @@ class NaiveRollout(BaseRollout):
             logits_lst.append(logits)
 
         logits = torch.stack(logits_lst, dim=1)  # (bs, response_length, vocab_size)
-        prompts = idx[:, :prompt_length]  # (bs, prompt_length)
+        prompt_ids = idx[:, :prompt_length]  # (bs, prompt_length)
         response = idx[:, prompt_length:]  # (bs, response_length)
         log_probs = logprobs_from_logits(logits=logits, labels=response)
         batch = TensorDict(
             {
-                'input_ids': prompts,
+                'input_ids': prompt_ids,
                 'responses': response,
                 'sequences': idx,
                 'old_log_probs': log_probs,
