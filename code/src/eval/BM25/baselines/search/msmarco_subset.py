@@ -3,12 +3,10 @@ import json
 import sys
 import os
 from tqdm import tqdm
-import pdb
 sys.path.append('./')
 
 from pyserini.search.lucene import LuceneSearcher
 from src.Lucene.utils import ndcg_at_k
-from src.eval.BM25.utils import parse_qrel
 
 
 if not os.path.exists("/shared/eng/pj20/lmr_model/raw_data/msmarco/indexes/lucene-index-msmarco-passage"):
@@ -58,12 +56,14 @@ if __name__ == '__main__':
     
     ndcg = []
 
-    for i in tqdm(range(0, len(test_data))):
+    for i in tqdm(range(len(test_data))):
         item = test_data[i]
         query = item['generated_text']
         target = ast.literal_eval(item['target'])
         scores = [1 for _ in range(len(target))]
         
+        if search_system is None:
+            raise FileNotFoundError("Pyserini index not found for msmarco_beir")
         hits = search_system.search(query, k=10)
         doc_list = [json.loads(hit.lucene_document.get('raw'))['id'] for hit in hits]
         ndcg.append(ndcg_at_k(doc_list, target, 10, rel_scores=scores))

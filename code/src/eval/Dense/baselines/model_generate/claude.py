@@ -3,7 +3,6 @@ import os
 import argparse
 from tqdm import tqdm
 import sys
-import pdb
 import json
 import numpy as np
 
@@ -17,7 +16,7 @@ from src.utils.claude_aws import chat_sonnet
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model_name', type=str, default='claude-3.5')
+    parser.add_argument('--model_name', type=str, default='claude-3.5', choices=['claude-3.5'])
     parser.add_argument('--save_dir', type=str, default='../results_dense')
     parser.add_argument("--data_path", type=str, default="data/local_index_search/scifact/dense/test.parquet")
     parser.add_argument('--dataset', type=str, default='scifact')
@@ -61,6 +60,7 @@ if __name__ == '__main__':
 
         prompt = prompt.replace("{", "(")
         prompt = prompt.replace("}", ")")
+        decoded = ""  # recorded when every attempt fails, so a failure scores 0
         attempts = 0
         while attempts < 10:
             try:

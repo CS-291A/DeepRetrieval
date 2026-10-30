@@ -43,7 +43,7 @@ class WorkerHelper:
                 import ray
                 return ray.util.get_node_ip_address()
             elif os.getenv("WG_BACKEND", None) == "torch_rpc":
-                from verl.single_controller.torchrpc.k8s_client import get_ip_addr
+                from verl.single_controller.torchrpc.k8s_client import get_ip_addr  # pyright: ignore[reportMissingImports]  # upstream torch_rpc backend is not shipped in this fork; only reached with WG_BACKEND=torch_rpc
                 return get_ip_addr()
             return None
 
@@ -81,6 +81,9 @@ class WorkerMeta:
 
 # we assume that in each WorkerGroup, there is a Master Worker
 class Worker(WorkerHelper):
+    # Set at runtime through self.__dict__.update(meta.to_dict()) in _configure_with_meta.
+    _master_addr: str
+    _master_port: str
 
     def __new__(cls, *args, **kwargs):
         instance = super().__new__(cls)
@@ -94,7 +97,7 @@ class Worker(WorkerHelper):
         worker_group_prefix = os.environ.get("WG_PREFIX", None)
 
         # when decorator @ray.remote applies, __new__ will be called while we don't want to apply _configure_before_init
-        if None not in [rank, worker_group_prefix] and 'ActorClass(' not in cls.__name__:
+        if rank is not None and worker_group_prefix is not None and 'ActorClass(' not in cls.__name__:
             instance._configure_before_init(f"{worker_group_prefix}_register_center", int(rank))
 
         return instance

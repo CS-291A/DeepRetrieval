@@ -19,7 +19,6 @@ import re
 # Add these at the top with other global variables
 from pyserini.search.lucene import LuceneSearcher
 from pyserini.eval.evaluate_dpr_retrieval import has_answers, SimpleTokenizer
-from tqdm import tqdm
 
 
 _searcher = None
@@ -30,6 +29,8 @@ def get_searcher():
     global _searcher
     if _searcher is None:
         _searcher = LuceneSearcher.from_prebuilt_index('wikipedia-dpr-100w')
+        if _searcher is None:  # pyserini prints the reason and returns None
+            raise RuntimeError("pyserini could not load the prebuilt index 'wikipedia-dpr-100w'")
     return _searcher
 
 def load_model(model_path):
@@ -160,6 +161,7 @@ def evaluate_model(model, tokenizer, data_path, device, model_name, save_dir, ba
                 output_ids = model.generate(**tokenized_inputs, max_new_tokens=512)
         
         for i, output in enumerate(output_ids):
+            generated_text = ""  # bound for the except handler even if decoding fails
             try:
                 if "mistral" in model_name.lower():
                     # For Mistral, use our robust decoding logic
@@ -211,6 +213,8 @@ def evaluate_model(model, tokenizer, data_path, device, model_name, save_dir, ba
                 idx = batch_start + i
                 
                 extracted_solution, processed_str = extract_solution(generated_text)
+                if extracted_solution is None:  # no <answer> block: scored as a failed query below
+                    raise ValueError("no <answer> block in the generated text")
                 query = json.loads(extracted_solution)['query']
                 
                 rank = 1001

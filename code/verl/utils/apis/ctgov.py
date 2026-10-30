@@ -27,6 +27,8 @@ class CTGovAPI:
     def search_with_query(self, query, topk=-1):
         """Search with query input to get the response of nctids. Optimized for speed."""
         err_msg = ""
+        last_error = None
+        nctid_list = []  # rebound by every attempt; retry >= 0 means at least one
 
         # Ensure we have a reasonable page size
         if "pageSize=" not in query:
@@ -124,6 +126,7 @@ class CTGovAPI:
             
         err_msg = ""
         trials = None
+        last_error = None
 
         for attempt in range(self.retry + 1):
             if attempt > 0:

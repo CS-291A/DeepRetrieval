@@ -18,7 +18,7 @@ def test_flash_attn_cross_entropy():
 
     from verl.utils.debug import log_gpu_memory_usage
 
-    from flash_attn.ops.triton.cross_entropy import cross_entropy_loss
+    from flash_attn.ops.triton.cross_entropy import cross_entropy_loss  # pyright: ignore[reportMissingImports]  # flash_attn is Linux/CUDA-only (gpu extra)
 
     import torch
     from torch import nn

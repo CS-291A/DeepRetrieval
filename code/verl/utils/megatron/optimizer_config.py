@@ -14,7 +14,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Callable, Optional
+from collections.abc import Callable
 
 import torch
 
@@ -29,18 +29,18 @@ class OptimizerConfig:
     optimizer: str = 'adam'
     """Optimizer to use (one of Adam or SGD)."""
 
-    lr: Optional[float] = None
+    lr: float | None = None
     """Initial learning rate. Depending on decay style and initial warmup, the learning rate at each
        iteration would be different.
     """
 
-    min_lr: Optional[float] = None
+    min_lr: float | None = None
     """Minumum value for learning rate. The scheduler clip values below this threshold."""
 
-    decoupled_lr: Optional[float] = None
+    decoupled_lr: float | None = None
     """Separate learning rate for the input and output layer."""
 
-    decoupled_min_lr: Optional[float] = None
+    decoupled_min_lr: float | None = None
     """Minimum value for learning rate for the input and output layer. The scheduler clip values
        below this threshold.
     """
@@ -63,7 +63,7 @@ class OptimizerConfig:
     ###############
     # Loss scaling
     ###############
-    loss_scale: Optional[float] = None
+    loss_scale: float | None = None
     """Static loss scaling, positive power of 2 values can improve fp16 convergence. If None,
        dynamic loss scaling is used.
     """

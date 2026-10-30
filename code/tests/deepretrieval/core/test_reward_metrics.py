@@ -5,10 +5,11 @@ Reward tables (read from verl/utils/reward_score/, total = format reward + answe
   <= {5, 20, 50, 100, 1000, 3000}; miss 1 - 3.5 (squad: 1 - 2.5); search error 1 - 4 (squad: 1 - 3);
   bad format -4 + 0.
 - scifact / fiqa / nfcorpus / hotpotqa / fever / msmarco(_beir): 0.1 + ndcg if ndcg > 0, else 0; bad format -2.
-- bird / spider / wikisql: 0.1 + 1 if execution results match; bird wrong result 0.1 + 0.3; otherwise 0;
+- bird / spider: 0.1 + 1 if execution results match; bird wrong result 0.1 + 0.3; otherwise 0;
   bad format -2.
 """
 from types import SimpleNamespace
+from typing import Any
 
 import numpy as np
 import pytest
@@ -94,7 +95,7 @@ def _validate(data_sources, rewards):
         "position_ids": torch.arange(2).expand(n, 2),
         "data_source": np.array(data_sources, dtype=object),
     }
-    trainer = SimpleNamespace(
+    trainer: Any = SimpleNamespace(  # duck-typed stand-in for the RayPPOTrainer `self`
         val_dataloader=[test_data],
         config=OmegaConf.create({"reward_model": {"enable": False}}),
         tokenizer=SimpleNamespace(eos_token_id=0, pad_token_id=0),

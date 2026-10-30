@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Any
+
 import ray
 
 
@@ -40,7 +42,8 @@ def test_rvdz():
     group_name = "test_group"
     world_size = 2
 
-    workers = [TestWorker.options(num_gpus=1).remote(rank, world_size, group_name) for rank in range(world_size)]
+    # ray actor handles expose `.remote` on every method; ray's types model the decorated class, not the handle
+    workers: list[Any] = [TestWorker.options(num_gpus=1).remote(rank, world_size, group_name) for rank in range(world_size)]
 
     ray.get([worker.init.remote() for worker in workers])
 

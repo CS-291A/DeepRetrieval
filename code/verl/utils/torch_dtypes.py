@@ -17,14 +17,13 @@ Adapted from Cruise.
 
 import torch
 
-from typing import Union
 
 HALF_LIST = [16, "16", "fp16", "float16"]
 FLOAT_LIST = [32, "32", "fp32", "float32"]
 BFLOAT_LIST = ["bf16", "bfloat16"]
 
 
-class PrecisionType(object):
+class PrecisionType:
     """Type of precision used.
 
     >>> PrecisionType.HALF == 16
@@ -38,14 +37,16 @@ class PrecisionType(object):
     FULL = "64"
     BFLOAT = "bf16"
     MIXED = "mixed"
+    # A plain class is not iterable; supported_type(s) iterate over this tuple instead.
+    _ALL = (HALF, FLOAT, FULL, BFLOAT, MIXED)
 
     @staticmethod
-    def supported_type(precision: Union[str, int]) -> bool:
-        return any(x == precision for x in PrecisionType)
+    def supported_type(precision: str | int) -> bool:
+        return any(x == precision for x in PrecisionType._ALL)
 
     @staticmethod
     def supported_types() -> list[str]:
-        return [x.value for x in PrecisionType]
+        return list(PrecisionType._ALL)
 
     @staticmethod
     def is_fp16(precision):

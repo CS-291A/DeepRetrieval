@@ -1,7 +1,7 @@
 from tqdm import tqdm
 from src.utils.claude_api import get_claude_response
 
-import utils.java_init
+import utils.java_init  # noqa: F401  (imported for its side effect: sets JAVA_HOME)
 import re
 # Add these at the top with other global variables
 from pyserini.search.lucene import LuceneSearcher
@@ -22,6 +22,8 @@ def get_searcher():
     global _searcher
     if _searcher is None:
         _searcher = LuceneSearcher.from_prebuilt_index('wikipedia-dpr-100w')
+        if _searcher is None:  # pyserini prints the reason and returns None
+            raise RuntimeError("pyserini could not load the prebuilt index 'wikipedia-dpr-100w'")
     return _searcher
 
 
@@ -34,7 +36,7 @@ def extract_solution(response):
     if matches:
         return matches[-1].strip() # Return the last matched answer
     else:
-        print(f"Warning: No answer tag found in the response. Using the response itself as the answer.")
+        print("Warning: No answer tag found in the response. Using the response itself as the answer.")
         return response
     
 
@@ -50,10 +52,10 @@ def process_llm_query_with_retry(prompt, retry_count=0, max_retries=3):
         return response
     except Exception as e:
         if retry_count < max_retries:
-            print(f"API call failed. Error: {str(e)}. Retrying ({retry_count + 1}/{max_retries})...")
+            print(f"API call failed. Error: {e!s}. Retrying ({retry_count + 1}/{max_retries})...")
             return process_llm_query_with_retry(prompt, retry_count + 1, max_retries)
         else:
-            print(f"Failed after {max_retries} attempts. Error: {str(e)}")
+            print(f"Failed after {max_retries} attempts. Error: {e!s}")
             return None
 
 def get_if_answer_span_in_query_batch(original_queries, queries, answer_candidates_list, batch_size=10):
@@ -154,15 +156,15 @@ Your response:
                             print(f"Warning: Null response for query at index {idx}")
                             results[idx] = None
                     except Exception as e:
-                        print(f"Error processing query at index {idx}: {str(e)}")
+                        print(f"Error processing query at index {idx}: {e!s}")
                         results[idx] = None
                     pbar.update(1)
     
     return results
 
-def get_if_answer_span_in_query(query, answer_candidates):
+def get_if_answer_span_in_query(original_query, query, answer_candidates):
     """Single query wrapper around the batch processing function."""
-    results = get_if_answer_span_in_query_batch([query], [answer_candidates], batch_size=1)
+    results = get_if_answer_span_in_query_batch([original_query], [query], [answer_candidates], batch_size=1)
     return results[0] if results else None
 
 def extract_json_from_llm_output(text):
@@ -170,7 +172,7 @@ def extract_json_from_llm_output(text):
         try:
             # First try direct parsing
             return json.loads(json_str)
-        except json.JSONDecodeError as e:
+        except json.JSONDecodeError:
             # print(f"Debug - JSON parse error: {str(e)}")
             # print(f"Debug - Problem string: {repr(json_str)}")
             
@@ -242,7 +244,7 @@ def extract_json_from_llm_output(text):
                 print("type of result: ", type(result))
                 return result
             except Exception as e:
-                print(f"Error parsing JSON from response: {str(e)}")
+                print(f"Error parsing JSON from response: {e!s}")
                 return None
 
     print(f"Warning: No JSON structure found in response: {text}")
@@ -311,7 +313,10 @@ def process_generations(dataset_name, model_name, generations_path, data_path):
     for idx, response in enumerate(generations):
         try:
             # Extract original query
-            original_query = extract_json_from_llm_output(response)['query']
+            parsed = extract_json_from_llm_output(response)
+            if parsed is None:  # handled below with an "error" placeholder
+                raise ValueError("no JSON object in the generation")
+            original_query = parsed['query']
             target = targets[idx].tolist()
             raw_query = str(raw_queries_[idx])
             
@@ -320,7 +325,7 @@ def process_generations(dataset_name, model_name, generations_path, data_path):
             raw_queries.append(raw_query)
             
         except Exception as e:
-            print(f"Error extracting query {idx}: {str(e)}")
+            print(f"Error extracting query {idx}: {e!s}")
             print(raw_queries_[idx])
             # Add placeholder values
             original_queries.append("error")
@@ -398,7 +403,7 @@ def process_generations(dataset_name, model_name, generations_path, data_path):
             results["sample_details"].append(sample_info)
                 
         except Exception as e:
-            print(f"Error processing query {idx}: {str(e)}")
+            print(f"Error processing query {idx}: {e!s}")
             # Add 0s for failed cases, unless this query was already scored before the failure
             for metric_dict in [results["original_metrics"], results["cleaned_metrics"]]:
                 for k in metric_dict:

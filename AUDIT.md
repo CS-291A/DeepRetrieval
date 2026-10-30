@@ -4,7 +4,7 @@ Static analysis (ruff, pyright), the `pytest-expert` / `negative-space-programmi
 
 Item IDs: `P*` packaging/infra, `A*` crash bugs, `B*` silent failures/hangs, `C*` deprecations, `D*` performance, `E*` CUDA fail-fast, `F*` packaging/docs/tests, `G*` approved behaviour changes.
 
-**Result:** `uv run pytest -q` (from `code/`): before `30 tests collected, 4 errors`; after `485 passed, 16 skipped` on macOS arm64 (CPU). The 16 skipped need CUDA or `~/verl-data`.
+**Result:** `uv run pytest -q` (from `code/`): before `30 tests collected, 4 errors`; after `545 passed, 16 skipped` on macOS arm64 (CPU); pyright errors ~1,900 → 15 (Part 5). The 16 skipped need CUDA or `~/verl-data`.
 
 ## Behaviour changes (approved)
 
@@ -25,6 +25,8 @@ Also user-visible but not in the G list:
 - **A11:** an msmarco `data_source` without `sparse`/`dense` raises up front. It previously crashed on the first well-formatted answer.
 - **A4:** CT.gov raises at the API layer when every retry fails. Before, it silently returned partial results. The reward layer logs this and scores HEAD's −4.
 - **A6:** JSON answers that are not objects (`5`, `null`, `["sql"]`) used to crash the reward. They now get the format penalty, except `["query"]` in the query rewards, which keeps HEAD's 0.
+- **Baseline generation (Part 5, src):** in the 10 `model_generate` scripts, a prompt whose 10 API attempts all fail is now saved as `""` and scores 0. It used to be saved with the previous prompt's output and scored against the wrong target. This can move GPT/Claude baseline numbers.
+- **Claude baselines (Part 5/6):** `anthropic` is pinned `>=1,<2` (Part 6, X1). 2.x can't reach Claude 3.x on Bedrock, and 1.x has no `temperature` keyword, so `temperature=0` goes via `extra_body`.
 - **A13:** `src/query_rewrite.py` now defaults to the NQ model that `vllm_host.sh` serves. **D31:** API-key environment variables take precedence over the `./*.key` files.
 
 ## Not done (needs a decision)
@@ -38,6 +40,8 @@ Also user-visible but not in the G list:
 - **Batched dense msmarco_subset search**.
 - **Eval rate limiter only warns.**
 - **Baseline generators re-save the previous query's text** when all 10 API attempts fail.
+- **`DataProto.batch` Optional typing** (T4, 11 of the 15 remaining pyright errors). `None` is a real runtime state: `update_actor`/`update_critic` return metrics-only DataProtos every PPO step, and `concat`/`chunk`/`to`/`__len__` handle it. See Part 6, X3.
+- **`pubdate.py` resume** truncates the input jsonl when resuming mid-file (not fixed; hardcoded paths keep it from running as shipped).
 - **`ray_trainer.py:689`** still lists the removed `trial_no_reason` data source in a metric condition. It's harmless because no module exists for it.
 
 
@@ -522,3 +526,408 @@ Out of scope: in `BM25/baselines/model_generate/claude.py` and `gpt.py` (and the
 
 ### Not approved, not done
 URL-encoding queries, sorting JDK versions in java_init, batching the Dense msmarco_subset searches, and the "rate limiter only warns" behaviour in eval_pubmed_reason.
+
+# Part 5 — Type checking (pyright/Pylance) and ruff autofix
+
+## Summary
+
+- **Pyright errors:** about 1,900 → 15 as Pylance saw them (repo root, editor interpreter without the project's packages). Against `code/.venv` it was 1,702 → 15.
+- **How:** a shared config, 2 missing dependencies, and four scoped fix passes. Real bugs found along the way were fixed test-first (tests in `tests/deepretrieval/{core,evals,preprocess}/test_pyright_bugs.py`).
+- **Ruff:** 3,301 → 1,810 findings.
+- **Suite:** `545 passed, 16 skipped`.
+
+### T1 — Shared type-checking config
+- Files: new `pyrightconfig.json` (repo root); a local, gitignored `.vscode/settings.json` sets the interpreter to `code/.venv/bin/python`.
+- Problem: the repo had no pyright config. Pylance ran with an interpreter that lacked the project's packages, so about 750 errors were missing-import noise. It also checked the vendored vllm copies (596 errors) and the megatron strategy, neither of which can resolve without Linux-only packages.
+- Fix: `include: ["code"]`, `extraPaths: ["code"]` (for `src.*`/`utils.*` imports), and Python 3.10. Excluded:
+  - `verl/third_party/vllm`
+  - the megatron strategy files (DeepRetrieval trains with FSDP only; checked: every `scripts/train/*.sh` uses `actor.strategy=fsdp`)
+  - `data_preprocess/wikisql.py`, which imports `src.sql.wikisql_lib`. The authors deleted that library in 8c8cbd7 ("remove wikisql"), so the script cannot run. (Superseded: the file is deleted in Part 6, X2, and the exclude entry is gone.)
+- Pylance ignores `venvPath`. Select `code/.venv/bin/python` as the interpreter, or rely on the local `.vscode/settings.json`.
+
+### T2 — Undeclared dependencies
+- `einops` is imported by `verl` and was only present transitively. It is now a base dependency.
+- `records` was imported by `data_preprocess/wikisql.py` and was added to the `retrieval` extra. (Superseded: it was removed again with wikisql in Part 6, X2.)
+
+### T3 — Ruff autofix
+- **Side-effect imports protected:** every `import utils.java_init` is marked `# noqa: F401  (imported for its side effect: sets JAVA_HOME)`.
+- **F401 (unused imports):** 748 removed with `--unsafe-fixes`, excluding `__init__.py` (re-exports) and `verl/third_party`. Every removed import of a local module or GPU package was reviewed. Undefined names (F821) stayed at 0 and pyright stayed at 15.
+- **Safe fixes:** 703 applied, excluding `verl/third_party`. Mostly PEP 585/604 annotations (valid at runtime on Python 3.10), f-strings without placeholders, `str()` inside f-strings, redundant `pass`, `object` base classes.
+- **Not applied:**
+  - **I001 import sorting.** isort puts third-party imports (e.g. `pyserini`) before first-party ones (`utils.java_init`), which would start pyserini's JVM before `JAVA_HOME` is set.
+  - **The vendored `verl/third_party/vllm` copies**, so they stay diffable against upstream.
+  - **Findings that need judgment:** 134 BLE001 broad excepts, 46 F841, 35 F401 in `__init__.py`/side-effect imports, 24 RUF059.
+- **`pdb.set_trace()`:** the 9 remaining calls (T100) are all inside `if __name__ == "__main__":` demo blocks of standalone `src/{Dense,Lucene}/*/search.py` scripts. Training and evals never reach them, so they were left.
+- **Verification:** `compileall` OK, pyright unchanged at 15, `545 passed, 16 skipped`.
+
+### T4 — Remaining 15 pyright errors (decision)
+- **11 from `DataProto.batch`.** It is annotated `TensorDict` but defaults to `None`. Making it `Optional[TensorDict]` is the honest type, but every `data.batch[...]` (about 137 sites) would then need narrowing.
+- **1 public-API mismatch:** `RayClassWithInitArgs.__call__` doesn't match its base class.
+- **2 dynamically attached methods:** `init_model` and `generate_sequences`, used in `main_generation.py`.
+- **1 unbound `output_text`** when `n_samples=0` in `main_generation.py`.
+
+### Suppressions added in Part 5
+
+There are 57 suppressions, every one line-scoped as `# pyright: ignore[rule]  # reason`. Bare `# type: ignore` and file-level disables were not used.
+- **Imports that can't resolve here:** Linux/CUDA-only packages (flash_attn, vllm, megatron, cupy) and optional or unshipped modules (mlflow, `src.sql.wikisql`, upstream `reward_score.math`).
+- **Third-party stub bugs**, each checked against the installed source: transformers, tensordict 0.5, ray, torch 2.4 `optim.AdamW`, pyserini, anthropic 2.3 `AnthropicBedrock` re-export.
+
+The per-area write-ups below list each one with its file and line.
+
+
+## Pyright pass: verl
+
+
+Command: `code/.venv/bin/pyright code/verl` from repo root.
+
+#### Counts
+
+| | errors | warnings |
+|---|---|---|
+| before | 343 | 1 |
+| after | 11 | 0 |
+
+By rule, before -> after:
+
+| rule | before | after |
+|---|---|---|
+| reportArgumentType | 109 | 4 |
+| reportCallIssue | 46 | 0 |
+| reportAttributeAccessIssue | 44 | 3 |
+| reportPossiblyUnboundVariable | 35 | 1 |
+| reportOptionalMemberAccess | 21 | 0 |
+| reportAssignmentType | 19 | 2 |
+| reportMissingImports | 17 | 0 |
+| reportIndexIssue | 12 | 0 |
+| reportReturnType | 11 | 0 |
+| reportPrivateImportUsage | 6 | 0 |
+| reportGeneralTypeIssues | 6 | 0 |
+| reportOptionalCall | 3 | 0 |
+| reportOperatorIssue | 3 | 0 |
+| reportInvalidTypeArguments | 3 | 0 |
+| reportIncompatibleMethodOverride | 3 | 1 |
+| reportFunctionMemberAccess | 3 | 0 |
+| reportOptionalSubscript | 2 | 0 |
+| reportUnsupportedDunderAll (warning) | 1 | 0 |
+
+`code/tests` (requested by the tests agent): 4 errors remain, all `DataProto(batch=None / non_tensor_batch=None)` in tests/utility/test_tensor_dict_utilities.py (see "Left" below). test_pyright_bugs.py: 0 errors, and the pytest-expert audit reports it clean.
+
+#### Real bugs found (fixed test-first; tests in code/tests/deepretrieval/core/test_pyright_bugs.py)
+
+1. **verl/single_controller/ray/base.py `execute_rank_zero_sync`**: called `self.execute_all_async(method_name, **args, **kwargs)`. `**` on a tuple always raises TypeError, and it targeted every worker instead of rank 0. Fixed to `ray.get(self.execute_rank_zero_async(method_name, *args, **kwargs))`, which is what upstream verl does. Test: `test_execute_rank_zero_sync_calls_only_rank_zero`. Impact: the method always crashed before; nothing in the repo calls it.
+2. **verl/models/transformers/qwen2.py `qwen2_flash_attn_forward`**: with `output_attentions=True`, `attn_weights` was unbound (UnboundLocalError). It now always returns `None` weights, matching the llama patch, which forces `output_attentions=False`. Test: `test_qwen2_flash_attn_forward_with_output_attentions_returns_no_weights`. Impact: only reached if a caller asks for attention weights; training never does.
+3. **`__main__` demo blocks in 15 reward modules** (reward_score/{fever,hotpotqa,msmarco_beir,nfcorpus,scifact,msmarco,bird,bird_no_reason,spider,spider_no_reason,wikisql}, reward_score_dense/{fever,hotpotqa,msmarco_beir,nfcorpus}): they called `compute_score(solution_str, ground_truth)` without the required `data_source`/`db_path`/`db_id`, so they raised TypeError. The fever/hotpotqa/msmarco_beir/nfcorpus demos also built a `ground_truth` without `score`. The demos now pass the arguments, and the demo ground truth is `{'target': ['4983'], 'score': [1]}`. Test: `test_reward_module_demo_reaches_scoring[*]` (15 cases; each demo now returns the -2 format penalty). Impact: `python -m` demos only; training is unaffected.
+4. **verl/utils/memory_buffer.py:107 `build_memory_reference_from_module`**: padded each param with the leftover loop variable `dtype` (the last buffer dtype) instead of `param.dtype`. With mixed-dtype modules this overruns the buffer. Test: `test_build_memory_reference_pads_each_param_with_its_own_dtype`. Impact: megatron/hybrid-engine path only (not used by FSDP training).
+5. **verl/utils/model.py `pad_packed_inputs`**: the error message called `unpad_tokens.ndim()`, which raised TypeError instead of the intended NotImplementedError. Test: `test_pad_packed_inputs_rejects_3d_tokens_with_not_implemented`. Impact: error path only.
+6. **verl/utils/torch_dtypes.py `PrecisionType.supported_type/supported_types`**: iterated over a plain class, so both always raised TypeError. They now iterate over a `_ALL` tuple of the class constants. Tests: `test_precision_type_supported_type[*]`, `test_precision_type_supported_types_lists_every_precision`. Impact: unused in the repo.
+7. **verl/workers/fsdp_workers.py `_build_rollout`**: an unknown `rollout.name` gave UnboundLocalError. It now raises `NotImplementedError("Unknown rollout name ...")`. Test: `test_build_rollout_rejects_unknown_rollout_name`. Impact: misconfiguration path only.
+8. **verl/workers/fsdp_workers.py `RewardModelWorker.compute_rm_score`**: when no chat-template switch was configured (the RM shares the policy tokenizer), `rm_data` was unbound and every call crashed. It now builds `rm_data` from the batch's input_ids/attention_mask/position_ids, as upstream verl does. Test: `test_compute_rm_score_without_chat_template_switch_scores_the_input_batch`. Impact: model-based RM without `input_tokenizer` now works. DeepRetrieval scripts do not enable the RM.
+
+### Behaviour notes (type-only intent, but with an observable edge)
+- `DataProto.rename` raises TypeError('old_keys and new_keys must both be given') instead of the TypeError from `len(None)`. Latent bug, left as is: `rename(['a','b'],['c','d'])` passes tuples to `rename_key_` as a *nested* key. The method is unused.
+- pubmed.py `get_abstracts`: `a.get("IdType", "")`. Before, an ArticleId without IdType raised AttributeError, which triggered a retry and then RuntimeError. Now that id is skipped. NCBI output always carries IdType.
+- ctgov/pubmed retry loops: pre-initialised `nctid_list`/`pmid_list`/`papers`/`last_error`. This only differs when `retry < 0` (before: UnboundLocalError).
+- `fsdp_utils.init_fn` now returns None, which is FSDP's `param_init_fn` contract. `to_empty` works in place, and no caller used the return value.
+- Gather.backward takes `*grad_outputs` (single output, unpacked); SeqAllToAll.forward is annotated to return a Tensor or a wait-callable.
+- tracking.py: the mlflow params path asserts a mapping; `is_dataclass` excludes classes.
+- mesh_dim_names list -> tuple: DeviceMesh stores `tuple(mesh_dim_names)` anyway.
+- New asserts only where the value is already guaranteed, e.g. `assert self.val_reward_fn is not None` (`_validate` is only called when it is set), `reward_fn` in fit, the actor optimizer/lr scheduler, `search_system`/`searcher` in the reward `retriver_items` functions (callers already reject a missing index), and the megatron rank/global info.
+
+#### Suppressions added (37, all line-scoped `# pyright: ignore[rule]  # reason`; none existed before)
+
+| reason | count | locations |
+|---|---|---|
+| Linux/CUDA-only import (flash-attn 6, megatron 4, vllm 2, cupy 1) | 13 | torch_functional.py:30,330,363; dp_actor.py:38; dp_critic.py:38; fsdp_workers.py:869; model.py:236; import_utils.py:26,35; megatron/worker.py:26,34; vllm_rollout.py:40; rendezvous/ray_backend.py:19 |
+| optional or not-shipped module (mlflow 2, src.sql.wikisql, upstream reward_score.math, torchrpc backend) | 5 | tracking.py:49,68; wikisql.py:10; main_eval.py:29; base/worker.py:46 |
+| transformers stub: `warning_once` patched onto Logger | 4 | llama.py:75,114; qwen2.py:61,93 |
+| transformers stub: `_flash_attention_forward(attention_mask: Tensor)` handles None | 2 | llama.py:127; qwen2.py:117 |
+| transformers stub: cache slot annotated Tuple[Tensor] but a Cache is returned | 1 | monkey_patch.py:25 |
+| torch 2.4 `optim/__init__` lacks `__all__` (AdamW) | 3 | fsdp_workers.py:232,643; fsdp_sft_trainer.py:197 |
+| tensordict 0.5 stubs (keys-view `__iter__`/`__contains__`, NestedKey in `__getitem__`) | 4 | protocol.py:71; main_ppo.py:163; ray_trainer.py:96; torch_functional.py:185 |
+| ray stubs (actor method `.remote`, StateSchema.get) | 4 | trajectory_tracker.py:76,108; ray_backend.py:58; ray/base.py:208 |
+| pyserini stub (from_prebuilt_index accepts an encoder name str) | 1 | msmarco.py:52 |
+
+Elsewhere, Optimizer imports were switched to `torch.optim.optimizer` instead of being suppressed.
+
+#### Left (11), with justification
+- protocol.py:160,173,200,514,541,590 and fsdp_workers.py:733: `DataProto.batch` is declared `TensorDict` but defaults to and is sometimes set to None. The honest type is `Optional[TensorDict]`, but switching costs about 107 new errors in verl and about 30 in tests (every `data.batch[...]`). This is a design decision for the main session. Options: accept these 7, or adopt Optional and add narrowing at the use sites. The tests agent's 4 remaining errors (batch=None, non_tensor_batch=None) have the same cause.
+- single_controller/ray/base.py:143: `RayClassWithInitArgs.__call__` takes placement args while `ClassWithInitArgs.__call__()` takes none. This is an LSP mismatch in the public API, and fixing it would change signatures.
+- trainer/main_generation.py:65,107: `init_model`/`generate_sequences` are bound dynamically onto RayWorkerGroup by `_bind_worker_method`.
+- trainer/main_generation.py:133: `output_text` is unbound only if `data.n_samples == 0`. Hydra discards the return value. A test would need a GPU and Ray, so it was not fixed.
+
+#### Verification
+- `uv run pytest -q`: 545 passed, 16 skipped (485 + 26 new in test_pyright_bugs.py + other agents' additions).
+- `ruff check <67 touched verl files + test file> --select F,E9,B --isolated`: no new findings vs HEAD (compared per file/rule); 4 HEAD findings removed.
+
+## Pyright pass: src
+
+
+Command: `code/.venv/bin/pyright code/src code/utils` (root pyrightconfig.json).
+
+#### Counts
+
+| Rule | Before | After |
+|---|---|---|
+| reportOptionalMemberAccess | 51 | 0 |
+| reportPossiblyUnboundVariable | 40 | 0 |
+| reportAttributeAccessIssue | 30 | 0 |
+| reportArgumentType | 26 | 0 |
+| reportCallIssue | 22 | 0 |
+| reportOptionalCall | 4 | 0 |
+| reportGeneralTypeIssues | 4 | 0 |
+| reportUnboundVariable | 2 | 0 |
+| reportOptionalSubscript | 1 | 0 |
+| reportReturnType | 1 | 0 |
+| reportPrivateImportUsage | 1 | 0 |
+| **Total** | **182** | **0** |
+
+code/utils had 0 errors before. The baseline had no unresolved `src.*` imports inside this scope. A repo-wide grep turns up 4 missing `src.sql.wikisql*` modules (deleted upstream in commit 8c8cbd7 "remove wikisql"). They are imported only from `data_preprocess/wikisql.py:19-21` and `verl/utils/reward_score/wikisql.py:10`. Both files are outside this scope, and the verl reward already turns the failure into a readable ImportError. `data_preprocess/wikisql.py` cannot run at all.
+
+#### Real bugs (each fixed test-first; tests in code/tests/deepretrieval/evals/test_pyright_bugs.py)
+
+1. **claude_aws.py sends `temperature`, which anthropic 2.3.0 rejects.** `src/utils/claude_aws.py:58,77` (HEAD). The locked SDK's `Messages.create()` has no `temperature` parameter, so every `chat_haiku`/`chat_sonnet` call raised `TypeError: unexpected keyword argument 'temperature'`. That breaks all Claude baselines in `src/eval/{BM25,Dense}/baselines/model_generate/*claude*.py`. Fix: `extra_body={"temperature": 0}`, which sends the same request body as before. Test: `test_claude_aws_sends_temperature_zero_with_the_installed_sdk[chat_haiku|chat_sonnet]`. It uses the real SDK with an httpx2 MockTransport and checks the JSON body. Impact: the scripts work again with the intended temperature 0. Recommendation: pin `anthropic` in pyproject's `baselines` extra. That file was not edited.
+2. **PubMed evals crash with `UnboundLocalError: search_api` when the key file is missing.** `src/eval/SearchEngine/{eval_pubmed,eval_pubmed_no_reason,eval_ctgov(--api pubmed),eval_pubmed_base,eval_pubmed_reason,eval_pubmed_no_reason_gpt}.py` `main()`. In eval_pubmed*.py the crash came only after the model had loaded. Fix: an `else: raise FileNotFoundError("PubMed API key not found: <abs path>")` before any work. Test: `test_pubmed_eval_without_key_file_names_the_missing_key[*]` (6 cases). Impact: the script still fails, but earlier and with the path to fix. Eval numbers do not change.
+3. **The Dense msmarco fallback could never work.** `src/eval/Dense/msmarco.py:36`, `msmarco_sub.py:35`. When `index_dir` is missing, the code called `FaissSearcher.from_prebuilt_index('msmarco-v1-passage', None)`. pyserini has no FAISS index of that name, so the call printed an error and returned None, and the call also passed no query encoder. Every query then failed with AttributeError and scored 0. Fix: `raise FileNotFoundError(f"dense index not found at {index_dir}; ...")`. Test: `test_dense_msmarco_missing_index_raises_instead_of_dead_prebuilt_fallback[*]`. Impact: a run that silently scored all zeros now stops with a clear error. When the index exists, nothing changes.
+4. **model_generate baselines recorded the previous prompt's output for a failed prompt.** These are 10 scripts in `src/eval/BM25/baselines/model_generate/{claude,gpt}.py` and `src/eval/Dense/baselines/model_generate{,_no_reasoning}/{,msmarco_subset/}{claude,gpt-4o}.py`. After 10 failed attempts, `decoded` still held the previous prompt's text, which was written under the new qid and scored against the wrong target. If the first prompt failed, the script crashed with NameError. An unknown `--model_name` gave NameError. Fix: `decoded = ""` per prompt, so a failure scores 0, consistent with G7. `--model_name` now has `choices=[...]` that match the if/elif chain exactly, so argparse rejects a typo. Tests: `test_model_generate_records_empty_text_when_every_attempt_fails[*]` and `test_model_generate_rejects_unknown_model_name[*]` (10 cases each). Impact: baseline numbers change only for prompts whose API calls all failed. Those prompts used to be credited with another prompt's output and now score 0.
+5. **The Dense `gpt-4o.py` scripts called `gpt_chat_35(prompt)` without its required `query_dict`.** `src/eval/Dense/baselines/model_generate{,_no_reasoning}/gpt-4o.py`. With the default `--model_name gpt-35`, every call raised TypeError, and bug 4 then made the script crash. Fix: call `gpt_chat_35_msg(prompt)`, as BM25 `gpt.py` already does. Covered by the tests for bug 4 (the stub has the real signature).
+6. **The `gpt_azure.py` `__main__` demo called `gpt_chat_35` with one argument.** `src/utils/gpt_azure.py:110`. Fix: call `gpt_chat_35_msg`. Test: `test_gpt_azure_demo_runs`.
+7. **`get_if_answer_span_in_query` passed 2 of the 3 required arguments to the batch function.** `src/eval/baselines/answer_filtered_test.py:163`. The function has no callers, so this was a latent TypeError. Fix: add an `original_query` parameter and forward all three arguments. Test: `test_answer_span_single_query_wrapper_forwards_all_batch_arguments`.
+
+There is also a latent problem that has no test because it is practically unreachable. In `src/eval/BM25/{nq,squad,triviaqa}.py`, if `tokenizer.decode` raises on a Mistral tensor output, the fallback leaves `generated_text` holding the previous sample's text. Binding `generated_text = ""` at the top of each iteration closes that path; see the type-only fixes below.
+
+#### Type-only fixes (no change to eval numbers)
+
+- `LuceneSearcher.from_prebuilt_index` returns None on failure (pyserini source, `_searcher.py:84-86`). `get_searcher()` in 9 files (wikipedia-dpr-100w) and in `BM25/msmarco{,_base}.py` now raises RuntimeError. Before, the None caused an AttributeError at the same call site, inside the same `try/except Exception`.
+- `retriver_items` in BM25 msmarco{,_base}: `if searcher is None: raise ValueError`, plus `else: raise ValueError` for an unknown mode. In Dense msmarco{,_sub}: dense mode only, and `hits` is cast to `List[DenseSearchResult]` (`search()` returns a tuple only when `return_vector=True`).
+- `src/Dense/{fever,hotpotqa,msmarco_beir,nfcorpus}/search.py` and `src/eval/Dense/baselines/search/msmarco_subset.py`: the same cast.
+- 21 scripts with a module-level `search_system = None` now check it right before its single use and raise FileNotFoundError with the existing warning text. The check sits at the original AttributeError site, so error ordering is unchanged; `test_msmarco_subset_targets` depends on that.
+- `json.loads(extracted_solution)` when no `<answer>` block is found: `raise ValueError` inside the same try (8 files). The query still scores 0.
+- `generated_text = ""` is bound per iteration before the try in nq/squad/triviaqa/eval_ctgov/eval_pubmed/eval_pubmed_no_reason, and `generated_text = response` in evidence_gpt_claude{,_no_reason}. This affects console output only.
+- post_process scripts (5): `if match is None: raise ValueError` inside the existing try, so the raw-text fallback still applies.
+- SQL evals (6): `if pred_results is None or gold_results is None: raise TimeoutError` replaces `set(None)` TypeError. Both are caught and score 0.0, as AUDIT approved.
+- `src/sql/{bird,spider}.py`: `db_id: Optional[str]=None`. `src/query_rewrite.py`: `format_prompt` now returns `list[dict[str, str]]`.
+- SearchEngine `*_reason`/`*_gpt` (4): `llm_results: list[tuple | None]`, which fixes the "Never is not iterable" error. Added a post-`init_mistral()` None check. An unknown GPT variant now raises ValueError instead of UnboundLocalError; both are caught by the same retry wrapper.
+- evidence_gpt_claude{,_no_reason}: `responses: list[Any]`.
+- answer_filtered_test: `parsed = ...; if parsed is None: raise ValueError` inside the existing try.
+- gpt_azure.py: `deployment_name/model_name/max_tokens` are now spelled `azure_deployment/model/max_completion_tokens`. These are the pydantic aliases; I verified at runtime that `model_dump()` and `_default_params` are identical with langchain-openai 1.7.3.
+- claude_aws.py: `message: List[MessageParam]` (TYPE_CHECKING import), a separate `response` variable, and `cast("TextBlock", response.content[0])`. No tools or thinking are requested, so the reply is always a single text block.
+
+#### Suppressions
+
+| File:line | Rule | Reason |
+|---|---|---|
+| src/utils/claude_aws.py:8 | reportPrivateImportUsage | anthropic 2.3.0 re-exports `AnthropicBedrock` through `from .lib.bedrock import *` but leaves it out of `__all__`. The runtime import works. `anthropic.lib.bedrock` would avoid the suppression, but the test stubs replace only `anthropic`. |
+
+#### Remainder
+
+None: 0 errors.
+
+#### Verification
+
+- `uv run pytest -q`: 530 passed, 16 skipped. This includes the 32 new tests and tests added concurrently by other agents.
+- ruff `--select F,E9,B,E722` on the 72 touched files: 127 findings at HEAD and 127 now. The only differences are two line-number shifts in F811 messages. The new test file passes all checks.
+
+## Pyright pass: preprocess
+
+
+Command: `cd <repo> && code/.venv/bin/pyright code/data_preprocess` (pyright 1.1.414, root pyrightconfig.json).
+
+#### Counts
+
+| Rule | Before | After |
+|---|---|---|
+| reportCallIssue | 116 | 0 |
+| reportArgumentType | 116 | 0 |
+| reportPossiblyUnboundVariable | 17 | 0 |
+| reportAttributeAccessIssue | 3 | 0 |
+| reportMissingImports | 3 | 3 |
+| **Total** | **255** | **3** |
+
+#### Fixes (type-only, no runtime change)
+
+1. **232 errors (`__getitem__` CallIssue/ArgumentType), 40 scripts.** `datasets.Dataset.__iter__` (datasets 5.0.1, `arrow_dataset.py:2750`) is unannotated, so pyright infers the row type from the formatter's yields: `Mapping | list | MutableMapping | dict`. The `list` arm rejects `d['prompt']`. Verified at runtime that iterating an unformatted `Dataset` (after `map`/`shuffle`/`concatenate_datasets`) yields `dict`. Fix: `for d in cast(Iterable[dict[str, Any]], X_dataset):` in the prompt-length statistics loops, and `from typing import Any, Iterable, List, Tuple, cast`. `cast` is the identity at runtime.
+2. **14 possibly-unbound `db_path` / `db_schema_path` / `table_path`** in `bird.py`, `spider.py`, `no_reason/SQL/{bird,spider}.py`, `wikisql.py`: an `if/elif` over `split` had no `else`. All call sites pass literal `'train'|'test'|'val'`, so the missing branch cannot be reached today. Added `else: raise ValueError(f"unknown split: {split!r}")` (a programmer-error guard; `raise` rather than `assert` so `-O` keeps it).
+3. **3 reportAttributeAccessIssue** `wikisql.py:81` `.all()[0].sql`: `records` is untyped; `RecordCollection.all()` without `as_dict` returns `list(self)`, i.e. `list[Record]`, and `Record.__getattr__` serves column names. Fix: `cast(records.Record, ...all()[0]).sql`.
+
+Byte-identity check: ran HEAD `fever.py` and the edited `fever.py` on the same synthetic qrels/queries; train/test/val parquet files compared equal with `cmp`.
+
+#### Real bugs (test-first)
+
+Tests: `code/tests/deepretrieval/preprocess/test_pyright_bugs.py` (+ `__init__.py`), reusing `tests/deepretrieval/evals/_loader.py`. Both failed before the fix for the expected reason, pass after.
+
+| # | Location | Problem | Fix | Test | Impact |
+|---|---|---|---|---|---|
+| 1 | `data_preprocess/utils/pubdate.py:130` (main) | `pubmed_api` bound only when `verl/utils/reward_score/apis/pubmed_api.key` exists (the key is gitignored). Without it every split raised `NameError`, which the per-split `except Exception` printed as "Error processing ... split: name 'pubmed_api' is not defined" and moved on, so no publication dates were ever added. | `api_key = None` default; print a warning when the key file is missing; always build `PubmedAPI(api_key=api_key)` (keyless, rate-limited client, same policy as the reward code in CLAUDE.md). | `test_pubdate_main_runs_without_api_key_file` | Script silently did nothing for anyone without the key. |
+| 2 | `data_preprocess/utils/pubdate.py:99` (`get_pub_date`) | The outer `except` saved `data[:i]`; when the failure happened before the loop bound `i` (e.g. zero items left to process and the final `save_checkpoint` fails), it raised `UnboundLocalError` and hid the real error. | `i = None` before the `try`; save only `if i is not None` (no item reached means no progress to save), then re-raise the original. Saving `data[:0]` instead would truncate `output_file`, which is the input file itself. | `test_get_pub_date_reraises_original_error_when_failing_before_first_item` | Wrong exception type on an error path. |
+
+Noticed but not fixed (no pyright finding, outside the brief): in `get_pub_date`, `i` from `enumerate(data[start_idx:])` is relative, but checkpoints save `data[:i+1]` as if it were absolute. When resuming with `start_idx > 0`, the 100-item checkpoint truncates `output_file` (the raw input jsonl) to `i+1` rows. The hardcoded `/home/pj20/...` paths make this unreachable as shipped.
+
+#### Suppressions
+
+None.
+
+#### Remainder (3)
+
+`wikisql.py:19-21` reportMissingImports: `src.sql.wikisql_lib.{dbengine,query,common}` was deleted upstream in commit 8c8cbd7 ("remove wikisql"), and `Query` is used at line 155+. The script cannot run (ImportError at startup). This is not a stub bug, so it does not qualify for a suppression. Recommendation: delete `code/data_preprocess/wikisql.py`, or add it to `exclude` in `pyrightconfig.json` with the reason above (I left the config alone, per the brief).
+
+#### Verification
+
+- `uv run pytest -q`: `5 failed, 483 passed, 16 skipped`. All 5 failures are in `tests/deepretrieval/core/test_ppo_update.py` (`AttributeError: module 'torch.optim' has no attribute 'sgd'`). That file is being edited by another agent (it shows as modified in the working tree), and nothing in it touches data_preprocess.
+- `ruff check <touched files> --select F,E9,B`: the same 518 findings as HEAD (all pre-existing: 490 F401, 18 F541, 4 F841, 4 B905, 2 B007). The sorted finding sets are identical. The new test files are clean.
+- pyright on scope: 3 errors (above).
+
+## Pyright pass: tests
+
+
+Command: `code/.venv/bin/pyright code/tests code/examples` (root pyrightconfig.json). Counts exclude the
+other agents' new `tests/deepretrieval/*/test_pyright_bugs.py` files (not in my scope).
+
+#### Counts by rule
+
+| Rule | Before | After |
+|---|---|---|
+| reportArgumentType | 30 | 9 (all caused by verl annotations, see Remainder) |
+| reportAttributeAccessIssue | 27 | 0 |
+| reportMissingImports | 9 | 0 (9 suppressed) |
+| reportOptionalMemberAccess | 8 | 0 |
+| reportPrivateImportUsage | 5 | 0 |
+| reportCallIssue | 3 | 0 |
+| reportIncompatibleMethodOverride | 3 | 0 |
+| reportFunctionMemberAccess | 2 | 0 |
+| reportPossiblyUnboundVariable | 2 | 0 |
+| reportGeneralTypeIssues | 1 | 0 |
+| reportOperatorIssue | 1 | 0 |
+| reportReturnType | 1 | 0 |
+| **Total** | **92** (tests 85, examples 7) | **9** (tests 9, examples 0) |
+
+About 10 of the fixed errors went away because of the verl agent's annotation fixes
+(`WorkerGroup(resource_pool=None)`, `union_numpy_dict`, `RayPPOTrainer(ray_worker_group_cls=...)`).
+
+#### Broken code found and fixed
+
+1. `examples/split_placement/main_ppo_split.py` failed on import:
+   `from verl.utils.reward_score import gsm8k, math`. Those upstream modules were deleted in this fork
+   (commits 80b9c71 and 6b294da). Red: running the HEAD file raises
+   `ImportError: cannot import name 'gsm8k' from 'verl.utils.reward_score'`. Fix: removed the stale local
+   `_select_rm_score_fn` and `RewardManager` and imported `verl.trainer.main_ppo.RewardManager`, which scores
+   every DeepRetrieval data source. Green: the module now imports. The example's `run_deepseek7b_llm.sh` still
+   points at gsm8k parquet files, and the trainer's reward has no gsm8k scorer, so the user has to pick a
+   DeepRetrieval dataset there.
+2. `examples/split_placement/split_monkey_patch.py` called
+   `compute_advantage(batch, gamma, lam, adv_estimator=...)`, but the signature is
+   `(data, adv_estimator, gamma, lam, num_repeat)`. Red: the HEAD call raises
+   `TypeError: compute_advantage() got multiple values for argument 'adv_estimator'`. Fix: keyword
+   arguments plus `num_repeat=rollout.n`, matching ray_trainer.py:915.
+3. Same file: `critic_output.get()` and `actor_output.get()` ran even when the critic or actor update had
+   been skipped (`use_critic=False`, or still in critic warmup), which raises `NameError`. Fix: both
+   start as `None`, and `.get()` runs only for an update that was actually launched.
+4. My own regression, caught by the suite: `torch.optim.sgd.SGD` fails at runtime because torch 2.4 runs
+   `del sgd` in `optim/__init__`. Switched to `from torch.optim.sgd import SGD` (and the same for `Adam`).
+
+No deepretrieval test was asserting nothing or wrong. Every assertion was kept. The new `assert x is not None`
+lines only narrow types: `_loader.py` and `test_import_hygiene.py` spec/loader, `test_api_clients` `__file__`,
+`test_main_ppo` `pubmed_api`, `test_query_rewrite` regex match, `test_apis` `_required_param`, and
+`test_check_worker_alive` `p.stdout`.
+
+#### Other typed fixes (no suppression)
+
+- `types.ModuleType` stubs: `vars(mod).update(...)` / `vars(mod)[name] = ...` (core/conftest.py,
+  test_vllm_preprocess.py). `setattr` would trip ruff B010.
+- Dynamically bound worker-group methods (ray tests): the variable is annotated `: Any` with a comment.
+  Same for the `type("Parent", ...)` target in test_error_paths. `_RecordingGroup.registered: str` is declared.
+- `test_reward_metrics`: the `SimpleNamespace` stand-in for `self` is annotated `Any`.
+- `test_evidence_baselines`: `cast(ast.Constant, kw.value)`, which keeps the AttributeError on non-constants.
+- `_loader.load_function`: `defs: list[ast.stmt]`.
+- `init_device_mesh` is imported from `torch.distributed.device_mesh`, and `mesh_dim_names` is now a tuple.
+- `import torch.distributed` / `import ray.cloudpickle` were added where those submodules are used.
+- CharTokenizer: `_tokenize(..., **kwargs)`. `save_pretrained` now matches the base signature and returns
+  `(str(cfg_file),)`.
+
+#### Suppressions (all line-scoped, with rule and reason)
+
+| File:line | Rule | Reason |
+|---|---|---|
+| tests/gpu_utility/test_torch_functional.py:16 | reportMissingImports | flash_attn is Linux/CUDA-only (gpu extra) |
+| tests/gpu_utility/test_ops.py:21 | reportMissingImports | flash_attn is Linux/CUDA-only |
+| tests/model/test_transformer.py:18 | reportMissingImports | flash_attn is Linux/CUDA-only |
+| tests/model/test_transformers_ulysses.py:28 | reportMissingImports | flash_attn is Linux/CUDA-only |
+| tests/rollout/run_fsdp_vllm.py:25 | reportMissingImports | vllm is Linux/CUDA-only |
+| tests/rollout/test_vllm_hf_loader.py:21 | reportMissingImports | vllm is Linux/CUDA-only |
+| tests/ray/detached_worker/server.py:37,38,39 | reportMissingImports | megatron is not in the lock (upstream Megatron strategy) |
+| tests/ray/detached_worker/server.py:114 | reportArgumentType | megatron_utils (excluded) annotates Dict but is passed a DictConfig |
+| tests/rollout/run_fsdp_vllm.py:109 | reportArgumentType | `LLM(model=None)`: the vendored DummyModelLoader.load_model never takes the model (verified, vllm_v_0_6_3/model_loader.py:116) |
+| tests/gpu_utility/test_memory_buffers.py:35,36 | reportCallIssue | transformers `PreTrainedModel.cuda` is decorated `@wraps(nn.Module.cuda)`, so pyright sees the unbound signature (verified, modeling_utils.py:3107) |
+| tests/e2e/envs/digit_completion/__init__.py:20 | reportArgumentType | transformers 4.47 defines `AutoTokenizer.register` without `@staticmethod` (verified, tokenization_auto.py:955) |
+| tests/e2e/arithmetic_sequence/model/create_model_tokenizer.py:40,41 | reportArgumentType | special-token ids come from the untyped `PreTrainedTokenizerBase.__getattr__` (str / list / None union). At runtime they are int or None, which LlamaConfig accepts |
+| tests/e2e/envs/digit_completion/tokenizer.py:114 | reportReturnType | same `__getattr__` issue. `cls_token_id` is actually None for this tokenizer (latent upstream bug). Never reached, because verl tokenizes with add_special_tokens=False |
+| tests/ray/test_data_transfer.py:82 | reportAttributeAccessIssue | tensordict 0.5.0 annotates `consolidate() -> None` but returns the TensorDict (verified, base.py:3334) |
+| tests/ray/test_data_transfer.py:108 | reportGeneralTypeIssues | tensordict 0.5.0 annotates `_TensorDictKeysView.__iter__` as returning Iterable, not Iterator |
+
+That is 19 suppressions: 9 missing GPU/Megatron imports and 10 verified library-annotation bugs. None are
+bare `# type: ignore`, and none are file-level.
+
+#### Remainder (9 errors, all reportArgumentType). The cause is in verl/, outside my scope
+
+The tests pass these values on purpose, and the library code handles them at runtime. The fix belongs in the
+annotation. Suppressing in the tests would leave stale ignores once verl is fixed.
+
+| Test site | Library fix |
+|---|---|
+| tests/utility/test_tensor_dict_utilities.py:249,253,257 (x2) | `verl/protocol.py` DataProto: `batch: Optional[TensorDict] = None`. `non_tensor_batch` must accept None, since `__len__` handles both cases |
+| tests/utility/test_tensor_dict_utilities.py:271 | `DataProto.from_single_dict(data: Mapping[str, Union[Tensor, ndarray]])` (dict is invariant) |
+| tests/utility/test_tensor_dict_utilities.py:276 | `verl/utils/seqlen_balancing.py` `_check_and_sort_partitions`: `sorted_partitions: List[List[int]] = [[] for _ in range(k)]`, or annotate `get_seqlen_balanced_partitions -> List[List[int]]` |
+| tests/model/test_transformers_ulysses.py:118,196 | `verl/utils/ulysses.py` `set_ulysses_sequence_parallel_group(group: Optional[dist.ProcessGroup])` |
+| tests/ray/test_worker_group_basics.py:65 | `verl/single_controller/base/decorator.py` `register(dispatch_mode: Union[Dispatch, Dict] = ...)`. `_check_dispatch_mode` explicitly accepts a Dict |
+
+#### Verification
+
+- `uv run pytest -q`: 528 passed, 16 skipped, 2 failed (the pass count grows as the other agents add tests). Both failures are
+  `tests/deepretrieval/evals/test_msmarco_subset_targets.py::test_target_that_is_code_is_rejected_not_executed[...]`
+  with `FileNotFoundError: Pyserini index not found for msmarco_beir`. That error is raised by the
+  uncommitted edits to `src/eval/{BM25,Dense}/baselines/search/msmarco_subset.py` (the src agent's scope).
+  I touched neither those files nor that test.
+- ruff `--select F,E9,B,PT` on the 33 touched files: 36 findings now, 36 at HEAD. The per-file code lists
+  are identical (all pre-existing).
+- pytest-expert audit: `tests/deepretrieval` shows only 4 BRANCHING findings, all in the other agents' new
+  `test_pyright_bugs.py` files. Every file I touched is clean. Whole `tests/`: 44 = the 40 at baseline + those 4.
+
+
+# Part 6 — Follow-ups: anthropic pin, wikisql removal, DataProto.batch
+
+### X1 — Pin `anthropic>=1,<2` (Claude 3.x baselines on Bedrock)
+- Files: `code/pyproject.toml` (`baselines` extra), `code/uv.lock` (anthropic 2.3.0 → 1.17.0), `src/utils/claude_aws.py` (comments), `tests/deepretrieval/evals/test_pyright_bugs.py`.
+- Problem: the baselines call `anthropic.claude-3-haiku-20240307-v1:0` and `anthropic.claude-3-5-sonnet-20240620-v1:0` through `AnthropicBedrock` with `temperature=0`. From 2.0.0 the Python SDK sends API version `2026-10-21`. Under that version:
+  - a request carrying `temperature` (including via `extra_body`) is rejected with a 400;
+  - Amazon Bedrock accepts it only for Claude 4.7 and later.
+  So with the unpinned 2.3.0 every baseline call failed, and the Part 5 `extra_body` workaround did not fix that. Sources: the Claude API skill's API-version migration guide; checked with `inspect` on 1.17.0 (`create()` has no `temperature` keyword, Bedrock client sends `bedrock-2023-05-31`) and on 2.3.0 (request carries `anthropic_version: 2026-10-21`).
+- Fix: `anthropic>=1,<2`, the newest line that still sends `bedrock-2023-05-31`. `temperature=0` keeps going through `extra_body`, which that version accepts.
+- Why not "update to the current API": moving to 2.x means moving the baselines to Claude 4.7+ models and dropping `temperature=0`. That produces a different baseline from the paper's, not a reproduction. `src/utils/claude_api.py` builds its boto3 `invoke_model` body by hand (`bedrock-2023-05-31`), so it is unaffected.
+- Test: `test_claude_aws_sends_temperature_zero_with_the_installed_sdk[chat_haiku|chat_sonnet]` now also asserts `anthropic_version == "bedrock-2023-05-31"`. It failed on 2.3.0 (`'2026-10-21' == 'bedrock-2023-05-31'`) and passes on 1.17.0.
+
+### X2 — Remove the wikisql leftovers
+- Deleted: `data_preprocess/wikisql.py`, `verl/utils/reward_score/wikisql.py`, `scripts/train/wikisql.sh`.
+- Edited:
+  - the wikisql branches in `main_ppo._select_rm_score_fn` and `RewardManager.__call__`;
+  - the `wikisql` substrings in the `ray_trainer.py` SQL metric conditions and comment;
+  - the `pyrightconfig.json` exclude entry;
+  - the `records` dependency (only wikisql used it);
+  - the test lists that named the module.
+- History: the authors removed `src/sql/wikisql.py` and `src/sql/wikisql_lib/` in 8c8cbd7 ("remove wikisql", 2025-03-22), so every remaining wikisql path already ended in `ImportError`. `sql_all` (added 2025-03-28) is bird + spider only (`data_preprocess/sql_all.py:7`).
+- Test: `test_main_ppo.py::test_select_rm_score_fn_rejects_removed_wikisql_data_source`. It failed (`DID NOT RAISE`) before the branch was removed; a wikisql data source now gets the standard `No reward function for data_source '...'` error. The two tests of the deleted reward module were removed.
+- Behaviour impact: none on any path that worked.
+
+### X3 — `DataProto.batch` typing (decision, not changed)
+- Fact: `batch` is `None` at runtime by design. `fsdp_workers.update_actor` (`:394`) and `update_critic` (`:731`) return `DataProto(meta_info={'metrics': ...})` with no batch every PPO step. `DataProto.concat` gathers those across DP workers with an explicit `if batch_lst[0] is not None ... else None`. `__len__`, `to`, `chunk`, `repeat` and `check_consistency` all guard `self.batch is not None`. The tests also build non-tensor-only DataProtos.
+- So `Optional[TensorDict]` is the honest type. The cost is narrowing at about 137 `data.batch[...]` sites that always hold a batch (rollout outputs, training batches).
+- Options:
+  - **(a) Leave it:** 11 pyright errors, all at genuine `None` sites.
+  - **(b) Optional + narrowing everywhere.**
+  - **(c) Split the metrics-only results into their own type:** an API change across workers and trainer.
+
+### X4 — Test-audit hygiene
+- Removed:
+  - a `hasattr` branch in favour of `monkeypatch.setattr(..., raising=False)`;
+  - an env-var loop in favour of four `setenv` calls.
+- Added `# audit: ignore[...] <reason>` for a fake API that must branch, a per-split fixture loop, and httpx2 `MockTransport` (no network). `audit_tests.py tests/deepretrieval`: clean.
+
+**Verification:** `uv run pytest -q` → `542 passed, 16 skipped` (down 3: the deleted wikisql module's 2 tests and its `extract_solution` param, plus its import param in `core/test_pyright_bugs.py`; up 1 for the new dispatch test). Pyright `15 errors` (unchanged).

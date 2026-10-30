@@ -427,7 +427,6 @@ class _RaisingFinder:
     def find_spec(self, name, path=None, target=None):
         if name == "utils.java_init":
             raise self.exc
-        return None
 
 
 @pytest.mark.parametrize(("module_name", "error_score"), SPAN_REWARDS)

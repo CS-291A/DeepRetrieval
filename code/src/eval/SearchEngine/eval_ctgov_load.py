@@ -1,22 +1,17 @@
 import sys
 import os
 import time
-from functools import partial
 
 # Debug: Print current directory and Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(os.path.dirname(current_dir))  # 
+project_root = os.path.dirname(os.path.dirname(current_dir))
 # Add the project root to Python path
-sys.path.insert(0, project_root)  # 
+sys.path.insert(0, project_root)
 
 
 import argparse
-import pandas as pd
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
 from tqdm import tqdm
 import json
-import re
 from collections import deque
 from threading import Lock
 
@@ -71,10 +66,10 @@ def process_batch(generations, batch_data, search_api, llm):
             query = generations[idx]
             query = extract_json_from_llm_output(query)
             nctid_list = run_search_ctgov(query, search_api)
-            gt_nctid_list = batch_data[idx]['trial_nctids']
+            gt_nctid_list = data['trial_nctids']
             batch_recalls.append(len(set(nctid_list) & set(gt_nctid_list)) / len(gt_nctid_list))
         except Exception as e:
-            print(f"Error in search query: {str(e)}")
+            print(f"Error in search query: {e!s}")
             batch_recalls.append(0)
         
     return batch_recalls

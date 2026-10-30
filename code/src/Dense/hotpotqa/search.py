@@ -1,4 +1,6 @@
-from pyserini.search.faiss import FaissSearcher
+from typing import cast
+
+from pyserini.search.faiss import FaissSearcher, DenseSearchResult
 import time
 import pdb
 
@@ -15,7 +17,8 @@ class PyseriniFaissSearcher:
     
     def search(self, query, top_k=5, threads=8):
         """ Perform a search for a single query. """
-        hits = self.searcher.search(query, k=top_k, threads=threads)
+        # search() returns (vectors, hits) only when return_vector=True
+        hits = cast(list[DenseSearchResult], self.searcher.search(query, k=top_k, threads=threads))
         results = [(hit.docid, hit.score) for hit in hits]
         return results
     

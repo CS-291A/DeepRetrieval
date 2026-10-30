@@ -47,7 +47,7 @@ def save_to_hdfs(data: io.BytesIO, name, hdfs_dir, verbose):
 
 
 @ray.remote
-class TrajectoryTracker():
+class TrajectoryTracker:
 
     def __init__(self, hdfs_dir, verbose) -> None:
         self.hdfs_dir = hdfs_dir
@@ -73,7 +73,7 @@ def dump_data(data, name):
     buffer = io.BytesIO()
     torch.save(data, buffer)
     tracker = get_trajectory_tracker()
-    ray.get(tracker.dump.remote(buffer, name))
+    ray.get(tracker.dump.remote(buffer, name))  # pyright: ignore[reportFunctionMemberAccess]  # @ray.remote actor methods expose .remote at runtime
 
 
 def get_trajectory_tracker():
@@ -105,4 +105,4 @@ if __name__ == '__main__':
     out = ray.get(output_lst)
 
     tracker = get_trajectory_tracker()
-    ray.get(tracker.wait_for_hdfs.remote())
+    ray.get(tracker.wait_for_hdfs.remote())  # pyright: ignore[reportFunctionMemberAccess]  # @ray.remote actor methods expose .remote at runtime

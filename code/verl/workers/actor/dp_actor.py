@@ -16,10 +16,10 @@ Single Process Actor
 """
 
 import itertools
-from typing import Iterable, Tuple
 
 import torch
 from torch import nn
+from torch.optim.optimizer import Optimizer
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 
 from verl import DataProto
@@ -34,7 +34,7 @@ import verl.utils.torch_functional as verl_F
 from verl.utils.import_utils import flash_attn_import_error
 
 try:
-    from flash_attn.bert_padding import pad_input, unpad_input, rearrange, index_first_axis
+    from flash_attn.bert_padding import pad_input, unpad_input, rearrange, index_first_axis  # pyright: ignore[reportMissingImports]  # flash-attn is Linux/CUDA-only (gpu extra)
 except ImportError as e:
     raise flash_attn_import_error('DataParallelPPOActor') from e
 
@@ -47,7 +47,7 @@ class DataParallelPPOActor(BasePPOActor):
         self,
         config,
         actor_module: nn.Module,
-        actor_optimizer: torch.optim.Optimizer = None,
+        actor_optimizer: Optimizer | None = None,
     ):
         """When optimizer is None, it is Reference Policy"""
         super().__init__(config)
@@ -60,7 +60,7 @@ class DataParallelPPOActor(BasePPOActor):
 
         self.compute_entropy_from_logits = torch.compile(verl_F.entropy_from_logits, dynamic=True)
 
-    def _forward_micro_batch(self, micro_batch, temperature) -> Tuple[torch.Tensor, torch.Tensor]:
+    def _forward_micro_batch(self, micro_batch, temperature) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Returns: 
             entropy: # (bs, response_len)
@@ -86,6 +86,7 @@ class DataParallelPPOActor(BasePPOActor):
                 input_ids_rmpad_rolled = torch.roll(input_ids_rmpad, shifts=-1, dims=1)  # (1, total_nnz)
 
                 # pad and slice the inputs if sp > 1
+                pad_size = 0  # only read when use_ulysses_sp
                 if self.use_ulysses_sp:
                     input_ids_rmpad, position_ids_rmpad, pad_size = ulysses_pad_and_slice_inputs(input_ids_rmpad, \
                                                                                                 position_ids_rmpad, \
@@ -152,6 +153,7 @@ class DataParallelPPOActor(BasePPOActor):
             grad_norm = self.actor_module.clip_grad_norm_(max_norm=self.config.grad_clip)
         else:
             grad_norm = torch.nn.utils.clip_grad_norm_(self.actor_module.parameters(), max_norm=self.config.grad_clip)
+        assert self.actor_optimizer is not None, 'only the actor (which has an optimizer) steps'
         self.actor_optimizer.step()
         return grad_norm
 
@@ -183,6 +185,7 @@ class DataParallelPPOActor(BasePPOActor):
         select_keys = ['responses', 'input_ids', 'attention_mask', 'position_ids']
         batch = data.select(batch_keys=select_keys).batch
 
+        indices: list[list[int]] = []  # only read when use_dynamic_bsz
         if use_dynamic_bsz:
             # split using dynamic bsz
             max_token_len = data.meta_info['max_token_len'] * self.ulysses_sequence_parallel_size
@@ -198,9 +201,9 @@ class DataParallelPPOActor(BasePPOActor):
         log_probs = torch.concat(log_probs_lst, dim=0)
 
         if use_dynamic_bsz:
-            indices = list(itertools.chain.from_iterable(indices))
-            assert len(indices) == log_probs.size(0), f"{len(indices)} vs. {log_probs.size()}"
-            revert_indices = torch.tensor(get_reverse_idx(indices), dtype=torch.long)
+            flat_indices = list(itertools.chain.from_iterable(indices))
+            assert len(flat_indices) == log_probs.size(0), f"{len(flat_indices)} vs. {log_probs.size()}"
+            revert_indices = torch.tensor(get_reverse_idx(flat_indices), dtype=torch.long)
             log_probs = log_probs[revert_indices]
 
         return log_probs
@@ -222,10 +225,10 @@ class DataParallelPPOActor(BasePPOActor):
         # See PPO paper for details. https://arxiv.org/abs/1707.06347
         dataloader = batch.split(self.config.ppo_mini_batch_size)
 
+        assert self.actor_optimizer is not None, 'update_policy needs an optimizer (the reference policy has none)'
         metrics = {}
-        for batch_idx, data in enumerate(dataloader):
+        for batch_idx, mini_batch in enumerate(dataloader):
             # split batch into micro_batches
-            mini_batch = data
             if self.config.use_dynamic_bsz:
                 max_token_len = self.config.ppo_max_token_len_per_gpu * self.ulysses_sequence_parallel_size
                 micro_batches, _ = rearrange_micro_batches(batch=mini_batch, max_token_len=max_token_len)
@@ -235,20 +238,20 @@ class DataParallelPPOActor(BasePPOActor):
 
             self.actor_optimizer.zero_grad()
 
-            for data in micro_batches:
-                data = data.cuda()  # actor device is cpu when using offload
-                responses = data['responses']
+            for micro_batch in micro_batches:
+                micro_batch = micro_batch.cuda()  # actor device is cpu when using offload
+                responses = micro_batch['responses']
                 response_length = responses.size(1)
-                attention_mask = data['attention_mask']
+                attention_mask = micro_batch['attention_mask']
                 response_mask = attention_mask[:, -response_length:]
-                old_log_prob = data['old_log_probs']
-                advantages = data['advantages']
+                old_log_prob = micro_batch['old_log_probs']
+                advantages = micro_batch['advantages']
 
                 clip_ratio = self.config.clip_ratio
                 entropy_coeff = self.config.entropy_coeff
 
                 # all return: (bsz, response_length)
-                entropy, log_prob = self._forward_micro_batch(micro_batch=data, temperature=temperature)
+                entropy, log_prob = self._forward_micro_batch(micro_batch=micro_batch, temperature=temperature)
 
                 pg_loss, pg_clipfrac, ppo_kl = core_algos.compute_policy_loss(old_log_prob=old_log_prob,
                                                                               log_prob=log_prob,
@@ -261,8 +264,10 @@ class DataParallelPPOActor(BasePPOActor):
                 # compute policy loss
                 policy_loss = pg_loss - entropy_loss * entropy_coeff
 
+                names = ['actor/entropy_loss', 'actor/pg_loss', 'actor/pg_clipfrac', 'actor/ppo_kl']
+                scalars = [entropy_loss, pg_loss, pg_clipfrac, ppo_kl]
                 if self.config.use_kl_loss:
-                    ref_log_prob = data['ref_log_prob']
+                    ref_log_prob = micro_batch['ref_log_prob']
                     # compute kl loss
                     kld = core_algos.kl_penalty(logprob=log_prob,
                                                 ref_logprob=ref_log_prob,
@@ -272,21 +277,17 @@ class DataParallelPPOActor(BasePPOActor):
                     # KL to the reference policy is a penalty: it must increase the loss
                     policy_loss = policy_loss + kl_loss * self.config.kl_loss_coef
                     metrics['actor/kl_coef'] = self.config.kl_loss_coef
+                    names.append('actor/kl_loss')
+                    scalars.append(kl_loss)
 
                 loss = policy_loss / self.gradient_accumulation
                 loss.backward()
 
                 # one device-to-host sync for all per-micro-batch scalars
-                names = ['actor/entropy_loss', 'actor/pg_loss', 'actor/pg_clipfrac', 'actor/ppo_kl']
-                scalars = [entropy_loss, pg_loss, pg_clipfrac, ppo_kl]
-                if self.config.use_kl_loss:
-                    names.append('actor/kl_loss')
-                    scalars.append(kl_loss)
-                data = dict(zip(names, verl_F.scalars_to_floats(scalars), strict=True))
-                append_to_dict(metrics, data)
+                micro_metrics = dict(zip(names, verl_F.scalars_to_floats(scalars), strict=True))
+                append_to_dict(metrics, micro_metrics)
 
             grad_norm = self._optimizer_step()
-            data = {'actor/grad_norm': grad_norm.detach().item()}
-            append_to_dict(metrics, data)
+            append_to_dict(metrics, {'actor/grad_norm': grad_norm.detach().item()})
         self.actor_optimizer.zero_grad()
         return metrics

@@ -22,6 +22,12 @@ def test_select_rm_score_fn_names_unknown_data_source():
         main_ppo._select_rm_score_fn("trial_no_reason")
 
 
+def test_select_rm_score_fn_rejects_removed_wikisql_data_source():
+    # wikisql was removed upstream (8c8cbd7); its reward module could only raise ImportError.
+    with pytest.raises(NotImplementedError, match=r"^No reward function for data_source 'wikisql_train'"):
+        main_ppo._select_rm_score_fn("wikisql_train")
+
+
 def test_pubmed_key_path_is_resolved_inside_the_package_not_the_cwd():
     expected = os.path.join(main_ppo.project_root, "verl", "utils", "reward_score", "apis", "pubmed_api.key")
 
@@ -35,6 +41,7 @@ def test_reward_manager_reads_pubmed_key_from_key_file(monkeypatch, tmp_path):
 
     manager = main_ppo.RewardManager(tokenizer=None, num_examine=0)
 
+    assert manager.pubmed_api is not None
     assert manager.pubmed_api.api_key == "secret-key"
 
 

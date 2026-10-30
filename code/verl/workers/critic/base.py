@@ -32,9 +32,7 @@ class BasePPOCritic(ABC):
     @abstractmethod
     def compute_values(self, data: DataProto) -> torch.Tensor:
         """Compute values"""
-        pass
 
     @abstractmethod
-    def update_critic(self, data: DataProto):
-        """Update the critic"""
-        pass
+    def update_critic(self, data: DataProto) -> dict:
+        """Update the critic and return its metrics"""

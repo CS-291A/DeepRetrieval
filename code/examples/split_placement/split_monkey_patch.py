@@ -16,9 +16,8 @@ An naive implementation of split placment example
 """
 import os
 from pprint import pprint
-from verl.single_controller.ray import RayResourcePool, RayWorkerGroup, RayClassWithInitArgs
 from verl import DataProto
-from verl.trainer.ppo.ray_trainer import compute_advantage, apply_kl_penalty, reduce_metrics, compute_data_metrics, Role, create_colocated_worker_cls
+from verl.trainer.ppo.ray_trainer import compute_advantage, apply_kl_penalty, reduce_metrics, compute_data_metrics
 from codetiming import Timer
 
 
@@ -95,18 +94,21 @@ def fit(self):
 
                 # compute advantages, executed on the driver process
                 batch = compute_advantage(batch,
-                                          self.config.algorithm.gamma,
-                                          self.config.algorithm.lam,
-                                          adv_estimator=self.config.algorithm.adv_estimator)
+                                          adv_estimator=self.config.algorithm.adv_estimator,
+                                          gamma=self.config.algorithm.gamma,
+                                          lam=self.config.algorithm.lam,
+                                          num_repeat=self.config.actor_rollout_ref.rollout.n)
             metrics['timing/adv'] = timer.last
 
             # update critic
+            critic_output = None
             if self.use_critic:
                 with Timer(name='update_critic_call', logger=None) as timer:
                     critic_output = self.critic_wg.update_critic(batch)
                 metrics['timing/update_critic_call'] = timer.last
 
             # implement critic warmup
+            actor_output = None
             if self.config.trainer.critic_warmup <= global_steps:
                 # update actor
                 with Timer(name='update_actor_call', logger=None) as timer:
@@ -115,15 +117,17 @@ def fit(self):
 
             # NOTE: make sure you set blocking=False in update_actor and update_crtic in the worker class
             with Timer(name='update_actor_critic', logger=None) as timer:
-                # NOTE: get the DataProtoFuture
-                critic_output = critic_output.get()
-                critic_output_metrics = reduce_metrics(critic_output.meta_info['metrics'])
-                metrics.update(critic_output_metrics)
+                # NOTE: get the DataProtoFuture (only for the updates launched above)
+                if critic_output is not None:
+                    critic_output = critic_output.get()
+                    critic_output_metrics = reduce_metrics(critic_output.meta_info['metrics'])
+                    metrics.update(critic_output_metrics)
 
                 # NOTE: get the DataProtoFuture
-                actor_output = actor_output.get()
-                actor_output_metrics = reduce_metrics(actor_output.meta_info['metrics'])
-                metrics.update(actor_output_metrics)
+                if actor_output is not None:
+                    actor_output = actor_output.get()
+                    actor_output_metrics = reduce_metrics(actor_output.meta_info['metrics'])
+                    metrics.update(actor_output_metrics)
             metrics['timing/update_actor_critic'] = timer.last
 
             # validate

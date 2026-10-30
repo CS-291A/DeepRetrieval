@@ -1,16 +1,10 @@
-import re
 import os
-from datasets import Dataset, load_dataset
-from random import randint, seed, choice
-from typing import List, Tuple
-from tqdm import tqdm
+from datasets import Dataset
+from typing import Any, cast
+from collections.abc import Iterable
 from verl.utils.hdfs_io import copy, makedirs
 import argparse
 import json
-from collections import defaultdict, Counter
-import random
-import pdb
-import sqlite3
 
 
 
@@ -28,6 +22,8 @@ def generate_schema_prompt(db_id, split, num_rows=None):
         db_schema_path = f'data/raw_data/spider/spider_data/database/{db_id}/schema.sql'
     elif split == 'test':
         db_schema_path = f'data/raw_data/spider/spider_data/test_database/{db_id}/schema.sql'
+    else:
+        raise ValueError(f"unknown split: {split!r}")
 
     if not os.path.exists(db_schema_path):
         db_schema_path = db_schema_path.replace('schema', db_id)
@@ -86,18 +82,18 @@ Let me write the SQL query.
 
 def load_bird_dataset():
     
-    with open(f'data/raw_data/spider/spider_data/train_spider.json', 'r') as f:
+    with open('data/raw_data/spider/spider_data/train_spider.json', 'r') as f:
         data_train_spider = json.load(f)
 
-    with open(f'data/raw_data/spider/spider_data/train_others.json', 'r') as f:
+    with open('data/raw_data/spider/spider_data/train_others.json', 'r') as f:
         data_train_other = json.load(f)
 
     data_train = data_train_spider + data_train_other
 
-    with open(f'data/raw_data/spider/spider_data/test.json', 'r') as f:
+    with open('data/raw_data/spider/spider_data/test.json', 'r') as f:
         data_test = json.load(f)
             
-    with open(f'data/raw_data/spider/spider_data/dev.json', 'r') as f:
+    with open('data/raw_data/spider/spider_data/dev.json', 'r') as f:
         data_val = json.load(f)
     
     train_data = [{'question': x['question'], 'db_id': x['db_id'], 'sql': x['query']} for x in data_train]
@@ -137,6 +133,8 @@ if __name__ == '__main__':
                 db_path = f'data/raw_data/spider/spider_data/database/{db_id}/{db_id}.sqlite'
             elif split == 'test':
                 db_path = f'data/raw_data/spider/spider_data/test_database/{db_id}/{db_id}.sqlite'
+            else:
+                raise ValueError(f"unknown split: {split!r}")
 
             data = {
                 "data_source": f"{data_source}_{split}",
@@ -174,15 +172,15 @@ if __name__ == '__main__':
     print(f"Train dataset size after filtering: {train_dataset.num_rows}")
 
     lengths_list = []
-    for d in train_dataset:
+    for d in cast(Iterable[dict[str, Any]], train_dataset):
         lengths_list.append(len(d['prompt'][0]['content'].split()))
 
     lengths_list_test = []
-    for d in test_dataset:
+    for d in cast(Iterable[dict[str, Any]], test_dataset):
         lengths_list_test.append(len(d['prompt'][0]['content'].split()))
         
     lengths_list_val = []
-    for d in val_dataset:
+    for d in cast(Iterable[dict[str, Any]], val_dataset):
         lengths_list_val.append(len(d['prompt'][0]['content'].split()))
         
     print(f"Average length of train dataset: {sum(lengths_list) / len(lengths_list)}")

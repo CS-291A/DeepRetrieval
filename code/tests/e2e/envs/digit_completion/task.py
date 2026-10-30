@@ -16,7 +16,7 @@
 import numpy as np
 
 
-class DigitCompletion(object):
+class DigitCompletion:
     """
     The implementation of a simple digit completion task.
     The prompt is a sequence of numbers with fixed difference. The task is to complete the next N numbers.
@@ -81,7 +81,7 @@ class DigitCompletion(object):
     def get_all_prompts(self):
         all_prompts = []
         for first_num in range(self.max_number + 1):
-            for diff in range(0, self.max_diff + 1):
+            for diff in range(self.max_diff + 1):
                 second_num = self.add(first_num, diff)
                 for num_to_complete in range(self.max_num_in_response + 1):
                     prompt = str(first_num) + ',' + str(second_num) + f':{self.max_number},{num_to_complete}'

@@ -15,7 +15,7 @@
 The base tokenizer class, required for any hybrid engine based rollout or inference with vLLM.
 """
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Dict, List, Union
+from typing import TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
     import numpy as np
@@ -33,7 +33,6 @@ class HybridEngineBaseTokenizer(ABC):
         """
         `int`: Size of the base vocabulary (without the added tokens).
         """
-        pass
 
     @property
     @abstractmethod
@@ -41,7 +40,6 @@ class HybridEngineBaseTokenizer(ABC):
         """
         `Optional[int]`: Id of the padding token in the vocabulary. Returns `None` if the token has not been set.
         """
-        pass
 
     @property
     @abstractmethod
@@ -50,25 +48,22 @@ class HybridEngineBaseTokenizer(ABC):
         `Optional[int]`: Id of the end of sentence token in the vocabulary. Returns `None` if the token has not been
         set.
         """
-        pass
 
     @property
     @abstractmethod
-    def all_special_ids(self) -> List[int]:
+    def all_special_ids(self) -> list[int]:
         """
         `List[int]`: List the ids of the special tokens(`'<unk>'`, `'<cls>'`, etc.) mapped to class attributes.
         """
-        pass
 
     @property
     @abstractmethod
-    def all_special_tokens(self) -> List[str]:
+    def all_special_tokens(self) -> list[str]:
         """
         `List[str]`: A list of the unique special tokens (`'<unk>'`, `'<cls>'`, ..., etc.).
 
         Convert tokens of `tokenizers.AddedToken` type to string.
         """
-        pass
 
     @abstractmethod
     def encode(self, text):
@@ -84,14 +79,13 @@ class HybridEngineBaseTokenizer(ABC):
                 Optional second sequence to be encoded. This can be a string, a list of strings (tokenized string using
                 the `tokenize` method) or a list of integers.
         """
-        pass
 
     @abstractmethod
     def decode(
         self,
-        token_ids: Union[int, List[int], "np.ndarray", "torch.Tensor"],
+        token_ids: Union[int, list[int], "np.ndarray", "torch.Tensor"],
         skip_special_tokens: bool = False,
-        clean_up_tokenization_spaces: bool = None,
+        clean_up_tokenization_spaces: bool | None = None,
         **kwargs,
     ) -> str:
         """
@@ -114,12 +108,11 @@ class HybridEngineBaseTokenizer(ABC):
         Returns:
             `str`: The decoded sentence.
         """
-        pass
 
     @abstractmethod
     def convert_ids_to_tokens(self,
-                              ids: Union[int, List[int]],
-                              skip_special_tokens: bool = False) -> Union[str, List[str]]:
+                              ids: int | list[int],
+                              skip_special_tokens: bool = False) -> str | list[str]:
         """
         Converts a single index or a sequence of indices in a token or a sequence of tokens, using the vocabulary and
         added tokens.
@@ -133,10 +126,9 @@ class HybridEngineBaseTokenizer(ABC):
         Returns:
             `str` or `List[str]`: The decoded token(s).
         """
-        pass
 
     @abstractmethod
-    def get_added_vocab(self) -> Dict[str, int]:
+    def get_added_vocab(self) -> dict[str, int]:
         """
         Returns the added tokens in the vocabulary as a dictionary of token to index. Results might be different from
         the fast call because for now we always add the tokens even if they are already in the vocabulary. This is
@@ -145,10 +137,9 @@ class HybridEngineBaseTokenizer(ABC):
         Returns:
             `Dict[str, int]`: The added tokens.
         """
-        pass
 
     @abstractmethod
-    def convert_tokens_to_string(self, tokens: List[str]) -> str:
+    def convert_tokens_to_string(self, tokens: list[str]) -> str:
         """
         Converts a sequence of tokens in a single string. The most simple way to do it is `" ".join(tokens)` but we
         often want to remove sub-word tokenization artifacts at the same time.
@@ -159,7 +150,6 @@ class HybridEngineBaseTokenizer(ABC):
         Returns:
             `str`: The joined tokens.
         """
-        pass
 
     @property
     def is_fast(self):

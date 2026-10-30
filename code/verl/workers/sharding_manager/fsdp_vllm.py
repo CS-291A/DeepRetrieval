@@ -15,8 +15,9 @@
 import os
 import logging
 import torch
+import torch.distributed
 from torch.distributed.fsdp.fully_sharded_data_parallel import FullyShardedDataParallel as FSDP
-from torch.distributed.fsdp.api import ShardingStrategy, ShardedStateDictConfig, StateDictType, FullStateDictConfig
+from torch.distributed.fsdp.api import ShardedStateDictConfig, StateDictType, FullStateDictConfig
 from torch.distributed.device_mesh import DeviceMesh
 
 from verl.third_party.vllm import LLM
@@ -38,7 +39,7 @@ class FSDPVLLMShardingManager(BaseShardingManager):
                  inference_engine: LLM,
                  model_config,
                  full_params: bool = False,
-                 device_mesh: DeviceMesh = None):
+                 device_mesh: DeviceMesh | None = None):
         self.module = module
         self.inference_engine = inference_engine
         self.model_config = model_config
@@ -61,7 +62,7 @@ class FSDPVLLMShardingManager(BaseShardingManager):
         if self.device_mesh is not None:
             gen_dp_rank = self.device_mesh['dp'].get_local_rank()
             torch.cuda.manual_seed(gen_dp_rank + 1000)  # make sure all tp ranks have the same random states
-            self.gen_random_states = torch.cuda.get_rng_state()
+            self.gen_random_states: torch.Tensor | None = torch.cuda.get_rng_state()
             torch.cuda.set_rng_state(self.torch_random_states)
         else:
             self.gen_random_states = None
@@ -88,6 +89,7 @@ class FSDPVLLMShardingManager(BaseShardingManager):
         # important: need to manually set the random states of each tp to be identical.
         if self.device_mesh is not None:
             self.torch_random_states = torch.cuda.get_rng_state()
+            assert self.gen_random_states is not None, 'set in __init__ whenever device_mesh is given'
             torch.cuda.set_rng_state(self.gen_random_states)
 
     def __exit__(self, exc_type, exc_value, traceback):

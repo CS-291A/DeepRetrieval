@@ -17,11 +17,12 @@ from transformers import AutoTokenizer, AutoConfig, AutoModelForCausalLM
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP, ShardingStrategy, MixedPrecision, CPUOffload
 from torch.distributed.fsdp.api import ShardingStrategy, ShardedStateDictConfig, StateDictType
 import torch
+import torch.distributed
 
 from verl.utils.distributed import initialize_global_process_group
 from verl.third_party.vllm import LLM
 
-from vllm import SamplingParams
+from vllm import SamplingParams  # pyright: ignore[reportMissingImports]  # vllm is Linux/CUDA-only (gpu extra)
 
 
 def main():
@@ -77,7 +78,7 @@ def main():
 
     tensor_model_parallel_size = 4
     from torch.distributed.device_mesh import init_device_mesh
-    device_mesh = init_device_mesh('cuda', mesh_shape=(world_size,), mesh_dim_names=['fsdp'])
+    device_mesh = init_device_mesh('cuda', mesh_shape=(world_size,), mesh_dim_names=('fsdp',))
 
     mixed_precision = MixedPrecision(param_dtype=torch.bfloat16, reduce_dtype=torch.float32, buffer_dtype=torch.float32)
     fsdp_model = FSDP(actor_model,
@@ -105,7 +106,7 @@ def main():
                                      detokenize=False)
 
     print(actor_model_config)
-    llm = LLM(model=None,
+    llm = LLM(model=None,  # pyright: ignore[reportArgumentType]  # weights arrive via sync_model_weights; load_format='dummy_dtensor' never reads model
               tokenizer=tokenizer,
               model_hf_config=actor_model_config,
               tensor_parallel_size=tensor_model_parallel_size,

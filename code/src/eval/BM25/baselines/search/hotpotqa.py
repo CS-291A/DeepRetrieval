@@ -2,7 +2,6 @@ import json
 import sys
 import os
 from tqdm import tqdm
-import pdb
 sys.path.append('./')
 
 from src.Lucene.hotpotqa.search import PyseriniMultiFieldSearch
@@ -60,6 +59,8 @@ if __name__ == '__main__':
         targets = {res[item['qid']]['generated_text']: item['target'] for item in batch} 
         scores = {res[item['qid']]['generated_text']: item['score'] for item in batch}
         
+        if search_system is None:
+            raise FileNotFoundError("Pyserini index not found for hotpotqa")
         results = search_system.batch_search(queries, top_k=10, threads=16)
         
         for query in queries:

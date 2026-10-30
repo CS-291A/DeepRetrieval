@@ -14,8 +14,9 @@
 
 import logging
 import time
+from typing import cast
 
-from cupy.cuda.nccl import NcclCommunicator, get_unique_id
+from cupy.cuda.nccl import NcclCommunicator, get_unique_id  # pyright: ignore[reportMissingImports]  # cupy is CUDA-only, not in the lock
 
 import ray
 from ray.util import list_named_actors
@@ -32,7 +33,8 @@ class NCCLIDStore:
 
 
 def get_nccl_id_store_by_name(name):
-    all_actors = list_named_actors(all_namespaces=True)
+    # ray annotates List[str], but all_namespaces=True returns [{'name': ..., 'namespace': ...}] (ray 2.59 source)
+    all_actors = cast(list[dict[str, str]], list_named_actors(all_namespaces=True))
     matched_actors = [actor for actor in all_actors if actor.get("name", None) == name]
     if len(matched_actors) == 1:
         actor = matched_actors[0]
@@ -53,7 +55,7 @@ def create_nccl_communicator_in_ray(rank: int,
         nccl_id = get_unique_id()
         nccl_id_store = NCCLIDStore.options(name=group_name).remote(nccl_id)
 
-        assert ray.get(nccl_id_store.get.remote()) == nccl_id
+        assert ray.get(nccl_id_store.get.remote()) == nccl_id  # pyright: ignore[reportFunctionMemberAccess]  # @ray.remote actor methods expose .remote at runtime
         communicator = NcclCommunicator(
             ndev=world_size,
             commId=nccl_id,

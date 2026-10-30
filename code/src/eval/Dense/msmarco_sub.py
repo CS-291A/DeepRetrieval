@@ -2,11 +2,12 @@ import json
 import sys
 import os
 from tqdm import tqdm
-import pdb
 sys.path.append('./')
 
 import torch
-from pyserini.search.faiss import FaissSearcher, AutoQueryEncoder
+from typing import cast
+
+from pyserini.search.faiss import FaissSearcher, AutoQueryEncoder, DenseSearchResult
 from src.Lucene.utils import ndcg_at_k
 
 
@@ -31,8 +32,9 @@ def get_searcher(mode='dense'):
     global _searcher
     if _searcher is None and mode == 'dense':
         if not os.path.exists(index_dir):
-            print("[Warning] Pyserini index not found")
-            _searcher = FaissSearcher.from_prebuilt_index('msmarco-v1-passage', None)
+            # pyserini has no prebuilt FAISS index named 'msmarco-v1-passage' and this fallback passed no
+            # query encoder, so it could never build a searcher.
+            raise FileNotFoundError(f"dense index not found at {index_dir}; set index_dir to your FAISS index")
         else:
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
             if 'contriever' in query_encoder_name:
@@ -74,11 +76,11 @@ def load_matching_dataset(domain):
 def retriver_items(query, top_k=3000, mode='sparse'):
     """Retrieve items from the search system."""
     searcher = get_searcher(mode=mode)
-    hits = searcher.search(query, k=top_k)
-    if mode == 'sparse':
-        doc_list = [json.loads(hit.lucene_document.get('raw'))['id'] for hit in hits]
-    elif mode == 'dense':
-        doc_list = [hit.docid for hit in hits]
+    if searcher is None or mode != 'dense':  # get_searcher only builds the FAISS searcher
+        raise ValueError(f"only mode='dense' is supported, got {mode!r}")
+    # search() returns (vectors, hits) only when return_vector=True
+    hits = cast(list[DenseSearchResult], searcher.search(query, k=top_k))
+    doc_list = [hit.docid for hit in hits]
     return doc_list
 
 
@@ -89,7 +91,7 @@ if __name__ == '__main__':
         ndcg = []
         train_data, test_data, val_data = load_matching_dataset(domain)
 
-        for i in tqdm(range(0, len(test_data))):
+        for i in tqdm(range(len(test_data))):
             query = test_data[i]['input']
             label = test_data[i]['label']
             targets = [str(l) for l in label]

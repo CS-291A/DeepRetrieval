@@ -15,6 +15,7 @@ dependencies = [
     "codetiming",
     "datasets",
     "dill",
+    "einops",
     "huggingface_hub",
     "hydra-core",
     # vllm 0.6.3, outlines 0.0.46 and pyhealth require numpy<2 (see README "Dependency Conflicts").
@@ -47,7 +48,9 @@ retrieval = [
 # GPT/Claude baselines (src/eval/**/baselines, src/utils/*) and the SQL cold-start SFT (src/cold_start).
 baselines = [
     "openai",
-    "anthropic",
+    # <2: anthropic 2.x sends API version 2026-10-21, which Bedrock accepts only for Claude 4.7+ and which
+    # rejects `temperature`; the baselines call Claude 3 Haiku / 3.5 Sonnet on Bedrock with temperature 0.
+    "anthropic>=1,<2",
     "boto3",
     "langchain-core",
     "langchain-openai",

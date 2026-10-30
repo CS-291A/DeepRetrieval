@@ -13,9 +13,8 @@
 # limitations under the License.
 
 import importlib
-from typing import List, Optional, Type
 
-import torch.nn as nn
+from torch import nn
 
 # Supported models using HF Rmpad
 # TODO(sgm): HF may supported more than listed here, we should add more after testing
@@ -26,7 +25,7 @@ _REOVEPAD_MODELS = {'llama': LlamaConfig, 'mistral': MistralConfig, 'gemma': Gem
 
 def check_model_support_rmpad(model_type: str):
     assert isinstance(model_type, str)
-    if not model_type in _REOVEPAD_MODELS.keys():
+    if not model_type in _REOVEPAD_MODELS:
         raise ValueError(f"Model architecture {model_type} is not supported for now. "
                          f"RMPad supported architectures: {_REOVEPAD_MODELS.keys()}."
                          f"Please set `use_remove_padding=False` in the model config.")
@@ -46,21 +45,21 @@ _MODELS = {
 class ModelRegistry:
 
     @staticmethod
-    def load_model_cls(model_arch: str, value=False) -> Optional[Type[nn.Module]]:
+    def load_model_cls(model_arch: str, value=False) -> type[nn.Module] | None:
         if model_arch not in _MODELS:
             return None
 
         megatron = "megatron"
 
-        module_name, model_cls_name = _MODELS[model_arch]
+        module_name, model_cls_names = _MODELS[model_arch]
         if not value:  # actor/ref
-            model_cls_name = model_cls_name[0]
-        elif value:  # critic/rm
-            model_cls_name = model_cls_name[1]
+            model_cls_name = model_cls_names[0]
+        else:  # critic/rm
+            model_cls_name = model_cls_names[1]
 
         module = importlib.import_module(f"verl.models.{module_name}.{megatron}.modeling_{module_name}_megatron")
         return getattr(module, model_cls_name, None)
 
     @staticmethod
-    def get_supported_archs() -> List[str]:
+    def get_supported_archs() -> list[str]:
         return list(_MODELS.keys())

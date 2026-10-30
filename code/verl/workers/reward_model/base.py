@@ -42,4 +42,3 @@ class BasePPORewardModel(ABC):
             - reward: [batch_size, sequence_length].
 
         """
-        pass

@@ -18,7 +18,8 @@ import logging
 import threading
 import signal
 import time
-from typing import List, Any, Callable, Dict
+from typing import Any
+from collections.abc import Callable
 
 from verl.single_controller.base.decorator import MAGIC_ATTR, Dispatch, get_predefined_dispatch_fn, get_predefined_execute_fn
 
@@ -46,13 +47,13 @@ class ResourcePool:
     def store(self):
         return self._store
 
-    def local_world_size_list(self) -> List[int]:
+    def local_world_size_list(self) -> list[int]:
         nested_local_world_size_list = [
             [local_world_size for _ in range(local_world_size)] for local_world_size in self._store
         ]
         return [item for row in nested_local_world_size_list for item in row]
 
-    def local_rank_list(self) -> List[int]:
+    def local_rank_list(self) -> list[int]:
         nested_local_rank_list = [[i for i in range(local_world_size)] for local_world_size in self._store]
         return [item for row in nested_local_rank_list for item in row]
 
@@ -78,7 +79,7 @@ class ClassWithInitArgs:
         return self.cls(*self.args, **self.kwargs)
 
 
-def check_workers_alive(workers: List, is_alive: Callable, gap_time: float = 1) -> None:
+def check_workers_alive(workers: list, is_alive: Callable, gap_time: float = 1) -> None:
     import time
     while True:  # nsp: ignore NSP005 deliberate monitor loop for the driver's lifetime; runs in its own thread
         for worker in workers:
@@ -90,7 +91,7 @@ def check_workers_alive(workers: List, is_alive: Callable, gap_time: float = 1) 
 
 class WorkerGroup:
 
-    def __init__(self, resource_pool: ResourcePool, **kwargs) -> None:
+    def __init__(self, resource_pool: ResourcePool | None, **kwargs) -> None:
         self._is_init_with_detached_workers = True if resource_pool is None else False
 
         if resource_pool is not None:
@@ -105,10 +106,10 @@ class WorkerGroup:
         self._master_addr = None
         self._master_port = None
 
-        self._checker_thread: threading.Thread = None
+        self._checker_thread: threading.Thread | None = None
 
     def _is_worker_alive(self, worker):
-        raise NotImplementedError(f"WorkerGroup._is_worker_alive called, should be implemented in derived class.")
+        raise NotImplementedError("WorkerGroup._is_worker_alive called, should be implemented in derived class.")
 
     def _block_until_all_workers_alive(self, max_wait_seconds: int = 1800) -> None:
         # bounded: a worker that never comes up must fail the driver instead of hanging it forever
@@ -153,8 +154,8 @@ class WorkerGroup:
             if hasattr(method, MAGIC_ATTR):
                 # this method is decorated by register
                 attribute = getattr(method, MAGIC_ATTR)
-                assert isinstance(attribute, Dict), f'attribute must be a dictionary. Got {type(attribute)}'
-                assert 'dispatch_mode' in attribute, f'attribute must contain dispatch_mode in its key'
+                assert isinstance(attribute, dict), f'attribute must be a dictionary. Got {type(attribute)}'
+                assert 'dispatch_mode' in attribute, 'attribute must contain dispatch_mode in its key'
 
                 dispatch_mode = attribute['dispatch_mode']
                 execute_mode = attribute['execute_mode']
@@ -181,7 +182,7 @@ class WorkerGroup:
                 try:
                     execute_fn = getattr(self, wg_execute_fn_name)
                     assert callable(execute_fn), 'execute_fn must be callable'
-                except Exception as e:
+                except Exception:
                     print(f'execute_fn {wg_execute_fn_name} is invalid')
                     raise
 
@@ -195,5 +196,5 @@ class WorkerGroup:
 
                 try:
                     setattr(self, method_name, func)
-                except Exception as e:
+                except Exception:
                     raise ValueError(f'Fail to set method_name {method_name}')

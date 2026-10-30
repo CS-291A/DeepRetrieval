@@ -81,7 +81,7 @@ def _mkdir(file_path: str) -> bool:
     return True
 
 
-def copy(src: str, dst: str, **kwargs) -> bool:
+def copy(src: str, dst: str, **kwargs) -> bool | str:
     r"""Works like shutil.copy() for file, and shutil.copytree for dir, and supports hdfs.
 
     Copy data and mode bits ("cp src dst"). Return the file's destination.
@@ -110,7 +110,7 @@ def copy(src: str, dst: str, **kwargs) -> bool:
             return shutil.copy(src, dst, **kwargs)
 
 
-def _copy(from_path: str, to_path: str, timeout: int = None) -> bool:
+def _copy(from_path: str, to_path: str, timeout: int | None = None) -> bool:
     if to_path.startswith("hdfs"):
         if from_path.startswith("hdfs"):
             returncode = _run_cmd(_hdfs_cmd(f"-cp -f {from_path} {to_path}"), timeout=timeout)

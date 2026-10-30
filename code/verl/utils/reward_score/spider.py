@@ -1,9 +1,7 @@
 import re
 import random
-import numpy as np
 import json
 import sys
-import os
 sys.path.append('./')
 
 from src.sql.spider import SpiderDatabaseSearcher
@@ -117,7 +115,7 @@ def check_json_format(json_str, do_print=False):
 
         return True
     # except json.JSONDecodeError:
-    except Exception as e:
+    except Exception:
         if do_print:
             print("[Error] JSON decoding failed")
         return False
@@ -192,7 +190,7 @@ def compute_score(solution_str, ground_truth, data_source, db_path, format_rewar
     #     print(f"Format score: {format_score}")
     
     if do_print:
-        print(f"--------------------------------")
+        print("--------------------------------")
         # schema = extract_database_schema(solution_str)
         # print(f"Database Schema: {schema}")
         print(f"Solution string: {solution_str}")
@@ -213,7 +211,7 @@ def compute_score(solution_str, ground_truth, data_source, db_path, format_rewar
     
     if do_print:
         print("\n" + "-"*80)
-        print(f" Final Score ".center(80, '-'))
+        print(" Final Score ".center(80, '-'))
         print(f"  Format: {format_score}")
         print(f"  Answer: {answer_score}")
         print(f"  Total: {total_score}")
@@ -226,5 +224,5 @@ if __name__ == '__main__':
     solution_str = """<|im_start|>assistant:  <answer>{"query": "Microstructural development of human"}</answer>
 """
     ground_truth = {'target': '4983'}
-    scores = compute_score(solution_str, ground_truth)
+    scores = compute_score(solution_str, ground_truth, data_source='spider', db_path='demo.sqlite')
     print(scores)

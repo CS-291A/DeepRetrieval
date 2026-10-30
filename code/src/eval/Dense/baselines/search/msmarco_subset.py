@@ -3,14 +3,14 @@ import json
 import sys
 import os
 from tqdm import tqdm
-import pdb
 import torch
 sys.path.append('./')
 
 from src.Lucene.utils import ndcg_at_k
-from src.eval.BM25.utils import parse_qrel
 
-from pyserini.search.faiss import FaissSearcher, AutoQueryEncoder
+from typing import cast
+
+from pyserini.search.faiss import FaissSearcher, DenseSearchResult, AutoQueryEncoder
 
 class PyseriniFaissSearcher:
     def __init__(self, index_dir, model_name):
@@ -27,7 +27,8 @@ class PyseriniFaissSearcher:
     
     def search(self, query, top_k=5, threads=8):
         """ Perform a search for a single query. """
-        hits = self.searcher.search(query, k=top_k, threads=threads)
+        # search() returns (vectors, hits) only when return_vector=True
+        hits = cast(list[DenseSearchResult], self.searcher.search(query, k=top_k, threads=threads))
         results = [(hit.docid, hit.score) for hit in hits]
         return results
     
@@ -90,12 +91,14 @@ if __name__ == '__main__':
     
     ndcg = []
 
-    for i in tqdm(range(0, len(test_data))):
+    for i in tqdm(range(len(test_data))):
         item = test_data[i]
         query = str(item['generated_text'])
         target = ast.literal_eval(item['target'])
         scores = [1 for _ in range(len(target))]
         
+        if search_system is None:
+            raise FileNotFoundError("Pyserini index not found for msmarco_beir")
         results = search_system.batch_search([query], top_k=10, threads=16)
         retrieved = [result[0] for result in results.get(query, [])]
         ndcg.append(ndcg_at_k(retrieved, target, 10, rel_scores=scores))

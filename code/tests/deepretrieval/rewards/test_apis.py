@@ -23,6 +23,12 @@ def _param(url, name):
     return match.group(1) if match else None
 
 
+def _required_param(url, name):
+    value = _param(url, name)
+    assert value is not None, f"request has no {name} parameter: {url}"
+    return value
+
+
 class FakeESearch:
     """PubMed esearch: `total` ids; listed calls (0-based) raise `failure` instead of answering."""
 
@@ -36,7 +42,7 @@ class FakeESearch:
         call, self.calls = self.calls, self.calls + 1
         if call in self.failing_calls:
             raise self.failure
-        retmax = int(_param(url, "retmax"))
+        retmax = int(_required_param(url, "retmax"))
         retstart = int(_param(url, "retstart") or 0)
         ids = [str(i) for i in range(retstart, min(retstart + retmax, self.total))]
         return FakeResponse({"esearchresult": {"count": str(self.total), "idlist": ids}})
@@ -59,7 +65,7 @@ class FakeCTGov:
             raise AssertionError("fake CT.gov call budget exhausted: client paged without a bound")
         if call in self.failing_calls:
             raise self.failure
-        page_size = int(_param(url, "pageSize"))
+        page_size = int(_required_param(url, "pageSize"))
         start = int(_param(url, "pageToken") or 0)
         end = start + page_size if self.endless else min(start + page_size, self.total)
         studies = [{"protocolSection": {"identificationModule": {"nctId": f"NCT{i:08d}"}}}

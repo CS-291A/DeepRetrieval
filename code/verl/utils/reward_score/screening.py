@@ -150,7 +150,7 @@ def calculate_answer_score(answer_text, label, criteria_length, do_print=False):
 
     except Exception as e:
         if do_print:
-            print(f"[Error] Error in evaluation: {str(e)}")
+            print(f"[Error] Error in evaluation: {e!s}")
         return -1.5
 
 
@@ -227,7 +227,7 @@ def validate_criteria_design(processed_str, do_print=False):
         
     except Exception as e:
         if do_print:
-            print(f"[Error] Error validating criteria: {str(e)}")
+            print(f"[Error] Error validating criteria: {e!s}")
         # errors.append("general_error")
         return False, None
 
@@ -257,9 +257,9 @@ def compute_score(solution_str, ground_truth):
         format_score = -2
 
     if do_print:
-        print(f"--------------------------------")
+        print("--------------------------------")
         print(f"Solution string: {solution_str}")
-        print(f"Target: {str(label)} |")
+        print(f"Target: {label!s} |")
 
     # Calculate answer score
     answer_score = 0
@@ -272,7 +272,7 @@ def compute_score(solution_str, ground_truth):
 
     if do_print:
         print("\n" + "-"*80)
-        print(f" Final Score ".center(80, '-'))
+        print(" Final Score ".center(80, '-'))
         print(f"  Format: {format_score}")
         print(f"  Answer: {answer_score}")
         print(f"  Total: {total_score}")

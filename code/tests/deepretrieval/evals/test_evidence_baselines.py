@@ -1,6 +1,7 @@
 """src/eval/baselines/evidence_gpt_claude{,_no_reason}.py."""
 import ast
 import re
+from typing import cast
 
 import pytest
 
@@ -18,7 +19,7 @@ def _claude_llm_names(relpath):
     names = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "get_claude_response":
-            names += [kw.value.value for kw in node.keywords if kw.arg == "llm"]
+            names += [cast(ast.Constant, kw.value).value for kw in node.keywords if kw.arg == "llm"]
     return names
 
 

@@ -27,7 +27,6 @@ from verl.utils.model import compute_position_id_with_mask
 
 import pandas as pd
 
-from transformers import AutoTokenizer
 
 from verl import DataProto
 from verl.utils.fs import copy_local_path_from_hdfs
@@ -123,7 +122,7 @@ def main(config):
     output_lst = np.transpose(output_lst, axes=(1, 0)).tolist()
 
     # add to the data frame
-    dataset[f'responses'] = output_lst
+    dataset['responses'] = output_lst
     
     # write to a new parquet
     output_dir = os.path.dirname(config.data.output_path)

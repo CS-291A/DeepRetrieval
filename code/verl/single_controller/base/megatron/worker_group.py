@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Dict
 
 from .worker import DistRankInfo, DistGlobalInfo
 from verl.single_controller.base import ResourcePool, WorkerGroup
@@ -22,14 +21,15 @@ class MegatronWorkerGroup(WorkerGroup):
 
     def __init__(self, resource_pool: ResourcePool, **kwargs):
         super().__init__(resource_pool=resource_pool, **kwargs)
-        self._megatron_rank_info = None
-        self._megatron_global_info: DistGlobalInfo = None
+        self._megatron_rank_info: list[DistRankInfo] | None = None
+        self._megatron_global_info: DistGlobalInfo | None = None
 
-    def init_megatron(self, default_megatron_kwargs: Dict = None):
-        raise NotImplementedError(f"MegatronWorkerGroup.init_megatron should be overwritten")
+    def init_megatron(self, default_megatron_kwargs: dict | None = None):
+        raise NotImplementedError("MegatronWorkerGroup.init_megatron should be overwritten")
 
     def get_megatron_rank_info(self, rank: int) -> DistRankInfo:
         assert 0 <= rank < self.world_size, f'rank must be from [0, world_size), Got {rank}'
+        assert self._megatron_rank_info is not None, "MegatronWorkerGroup._megatron_rank_info must be initialized"
         return self._megatron_rank_info[rank]
 
     @property
@@ -47,5 +47,6 @@ class MegatronWorkerGroup(WorkerGroup):
         assert self._megatron_global_info is not None, "MegatronWorkerGroup._megatron_global_info must be initialized"
         return self._megatron_global_info.pp_size
 
-    def get_megatron_global_info(self):
+    def get_megatron_global_info(self) -> DistGlobalInfo:
+        assert self._megatron_global_info is not None, "MegatronWorkerGroup._megatron_global_info must be initialized"
         return self._megatron_global_info

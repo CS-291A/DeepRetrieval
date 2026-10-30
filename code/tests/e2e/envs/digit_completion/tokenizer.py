@@ -21,7 +21,7 @@ This is heavily inspired from CanineTokenizer in transformers package.
 import json
 import os
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Union
+from collections.abc import Sequence
 
 from transformers.tokenization_utils import AddedToken, PreTrainedTokenizer
 
@@ -89,7 +89,7 @@ class CharTokenizer(PreTrainedTokenizer):
     def get_vocab(self):
         return self._vocab_str_to_int
 
-    def _tokenize(self, text: str) -> List[str]:
+    def _tokenize(self, text: str, **kwargs) -> list[str]:
         return list(text)
 
     def _convert_token_to_id(self, token: str) -> int:
@@ -102,21 +102,23 @@ class CharTokenizer(PreTrainedTokenizer):
         return "".join(tokens)
 
     def build_inputs_with_special_tokens(self,
-                                         token_ids_0: List[int],
-                                         token_ids_1: Optional[List[int]] = None) -> List[int]:
+                                         token_ids_0: list[int],
+                                         token_ids_1: list[int] | None = None) -> list[int]:
         sep = [self.sep_token_id]
         cls = [self.cls_token_id]
         result = cls + token_ids_0 + sep
         if token_ids_1 is not None:
             result += token_ids_1 + sep
-        return result
+        # Special-token ids come from PreTrainedTokenizerBase.__getattr__ (typed str | list[str] | None). Note that
+        # cls_token_id is None for this tokenizer; verl always tokenizes with add_special_tokens=False.
+        return result  # pyright: ignore[reportReturnType]  # untyped __getattr__
 
     def get_special_tokens_mask(
         self,
-        token_ids_0: List[int],
-        token_ids_1: Optional[List[int]] = None,
+        token_ids_0: list[int],
+        token_ids_1: list[int] | None = None,
         already_has_special_tokens: bool = False,
-    ) -> List[int]:
+    ) -> list[int]:
         if already_has_special_tokens:
             return super().get_special_tokens_mask(
                 token_ids_0=token_ids_0,
@@ -129,7 +131,7 @@ class CharTokenizer(PreTrainedTokenizer):
             result += ([0] * len(token_ids_1)) + [1]
         return result
 
-    def get_config(self) -> Dict:
+    def get_config(self) -> dict:
         return {
             "char_ords": [ord(ch) for ch in self.characters],
             "model_max_length": self.model_max_length,
@@ -137,21 +139,27 @@ class CharTokenizer(PreTrainedTokenizer):
         }
 
     @classmethod
-    def from_config(cls, config: Dict) -> "CharTokenizer":
+    def from_config(cls, config: dict) -> "CharTokenizer":
         cfg = {}
         cfg["characters"] = [chr(i) for i in config["char_ords"]]
         cfg["model_max_length"] = config["model_max_length"]
         cfg["chat_template"] = config["chat_template"]
         return cls(**cfg)
 
-    def save_pretrained(self, save_directory: Union[str, os.PathLike], **kwargs):
+    def save_pretrained(self,
+                        save_directory: str | os.PathLike,
+                        legacy_format: bool | None = None,
+                        filename_prefix: str | None = None,
+                        push_to_hub: bool = False,
+                        **kwargs) -> tuple[str]:
         cfg_file = Path(save_directory) / "tokenizer_config.json"
         cfg = self.get_config()
         with open(cfg_file, "w") as f:
             json.dump(cfg, f, indent=4)
+        return (str(cfg_file),)
 
     @classmethod
-    def from_pretrained(cls, save_directory: Union[str, os.PathLike], **kwargs):
+    def from_pretrained(cls, save_directory: str | os.PathLike, **kwargs):
         cfg_file = Path(save_directory) / "tokenizer_config.json"
         with open(cfg_file) as f:
             cfg = json.load(f)

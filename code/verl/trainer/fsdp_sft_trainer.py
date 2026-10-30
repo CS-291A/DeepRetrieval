@@ -29,7 +29,7 @@ import torch
 import torch.distributed
 from torch import nn, optim
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP, MixedPrecision, ShardingStrategy, CPUOffload
-from transformers import AutoTokenizer, AutoModelForCausalLM, PreTrainedModel, AutoConfig
+from transformers import AutoModelForCausalLM, PreTrainedModel, AutoConfig
 from verl.utils.torch_functional import get_cosine_schedule_with_warmup
 from tensordict import TensorDict
 from torch.utils.data import DataLoader, DistributedSampler
@@ -41,7 +41,7 @@ from verl.utils.tracking import Tracking
 
 from torch.distributed.device_mesh import DeviceMesh
 
-import verl.utils.hdfs_io as hdfs_io
+from verl.utils import hdfs_io
 from verl.utils.debug import log_gpu_memory_usage
 
 logger = logging.getLogger(__file__)
@@ -55,7 +55,7 @@ def extract_step(path):
     return None
 
 
-class FSDPSFTTrainer(object):
+class FSDPSFTTrainer:
 
     def __init__(self, config, device_mesh: DeviceMesh):
         self.config = config
@@ -194,7 +194,7 @@ class FSDPSFTTrainer(object):
 
         log_gpu_memory_usage('After FSDP wrapping', logger=logger)
 
-        self.optimizer = optim.AdamW(self.fsdp_model.parameters(),
+        self.optimizer = optim.AdamW(self.fsdp_model.parameters(),  # pyright: ignore[reportPrivateImportUsage]  # torch 2.4 optim/__init__ has no __all__; AdamW is public API
                                      lr=self.config.optim.lr,
                                      betas=self.config.optim.betas,
                                      weight_decay=self.config.optim.weight_decay)
@@ -314,6 +314,7 @@ class FSDPSFTTrainer(object):
         rank = self.device_mesh.get_rank()
 
         # TODO: add a unified tracking
+        tracking = None
         if rank == 0:
             tracking = Tracking(project_name=self.config.trainer.project_name,
                                 experiment_name=self.config.trainer.experiment_name,
@@ -328,7 +329,7 @@ class FSDPSFTTrainer(object):
             for data in self.train_dataloader:
                 data = TensorDict(data, batch_size=self.config.data.train_batch_size).cuda()
                 metric = self.training_step(data)
-                if rank == 0:
+                if tracking is not None:  # set iff rank == 0
                     tracking.log(data=metric, step=global_step)
                 global_step += 1
 
@@ -338,7 +339,7 @@ class FSDPSFTTrainer(object):
                 data = TensorDict(data, batch_size=self.config.data.micro_batch_size).cuda()
                 val_loss = self.validation_step(data)
                 val_losses.append(val_loss)
-            if rank == 0:
+            if tracking is not None:  # set iff rank == 0
                 val_loss = torch.mean(torch.stack(val_losses))
                 metric = {'val/loss': val_loss.detach().item()}
                 tracking.log(data=metric, step=global_step)

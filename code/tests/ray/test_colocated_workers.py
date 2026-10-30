@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Any
+
 import ray
 
 from verl.single_controller.base import Worker
@@ -56,8 +58,9 @@ def test_colocated_workers():
     critic_cls = RayClassWithInitArgs(cls=Critic, config={'b': 10})
     resource_pool = RayResourcePool(process_on_nodes=[2])
 
-    actor_wg = RayWorkerGroup(resource_pool=resource_pool, ray_cls_with_init=actor_cls)
-    critic_wg = RayWorkerGroup(resource_pool=resource_pool, ray_cls_with_init=critic_cls)
+    # worker methods are bound onto the groups at runtime
+    actor_wg: Any = RayWorkerGroup(resource_pool=resource_pool, ray_cls_with_init=actor_cls)
+    critic_wg: Any = RayWorkerGroup(resource_pool=resource_pool, ray_cls_with_init=critic_cls)
 
     expected_actor_output = actor_wg.add(data)
     expected_critic_output = critic_wg.sub(data)

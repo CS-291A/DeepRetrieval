@@ -52,6 +52,8 @@ def load_script(monkeypatch, relpath, stubs=()):
     monkeypatch.setattr(sys, "argv", [str(path)])
     name = "_script_" + re.sub(r"\W", "_", relpath)
     spec = importlib.util.spec_from_file_location(name, path)
+    assert spec is not None, f"no import spec for {path}"
+    assert spec.loader is not None, f"no loader for {path}"
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -75,7 +77,7 @@ def load_function(relpath, func_name, namespace):
     """
     source = (CODE_DIR / relpath).read_text()
     tree = ast.parse(source)
-    defs = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == func_name]
+    defs: list[ast.stmt] = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == func_name]
     assert len(defs) == 1, f"expected one top-level def {func_name} in {relpath}, found {len(defs)}"
     module = ast.Module(body=defs, type_ignores=[])
     code = compile(module, str(CODE_DIR / relpath), "exec")

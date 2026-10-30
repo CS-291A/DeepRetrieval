@@ -1,6 +1,4 @@
 from openai import OpenAI
-import pdb
-import os
 
 from src.utils.api_keys import load_secret
 

@@ -19,7 +19,7 @@ from megatron.core import parallel_state as mpu
 
 
 def mark_parameter_as_sequence_parallel(parameter):
-    setattr(parameter, 'sequence_parallel', True)
+    parameter.sequence_parallel = True
 
 
 def is_sequence_parallel_param(param):

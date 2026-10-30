@@ -1,7 +1,6 @@
 import json
 import re
 import os
-import pdb
 
 import argparse
 
@@ -24,6 +23,8 @@ for key, value in data.items():
     if match is None:
         match = re.search(r'"query"\s*:\s*"([^"]+)"', value["generated_text"], re.DOTALL)
     try:
+        if match is None:  # handled below: the raw generated text is kept
+            raise ValueError("no query found in the generated text")
         query_text = match.group(1)
         # json loads
         try:

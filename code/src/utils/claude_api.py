@@ -1,6 +1,5 @@
 import json
 import boto3
-import time
 
 from src.utils.api_keys import load_secret
 

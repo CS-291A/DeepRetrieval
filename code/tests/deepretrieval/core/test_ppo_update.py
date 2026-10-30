@@ -8,6 +8,7 @@ import pytest
 import torch
 from omegaconf import OmegaConf
 from tensordict import TensorDict
+from torch.optim.sgd import SGD  # torch 2.4 optim has no __all__, so pyright treats torch.optim.SGD as private
 
 from verl import DataProto
 import verl.utils.torch_functional as verl_F
@@ -64,7 +65,7 @@ def _run_update_policy(dp_actor_module, monkeypatch, kl_loss_coef):
     policy = torch.nn.Module()
     policy.w = torch.nn.Parameter(torch.tensor(W_INIT))
     actor = dp_actor_module.DataParallelPPOActor(_actor_config(kl_loss_coef), policy,
-                                                 torch.optim.SGD(policy.parameters(), lr=0.0))
+                                                 SGD(policy.parameters(), lr=0.0))
 
     def forward_micro_batch(micro_batch, temperature):
         n = micro_batch["responses"].shape[0]
@@ -150,7 +151,7 @@ def test_critic_metrics_equal_per_item_reads(dp_critic_module, monkeypatch):
                                "cliprange_value": 0.5, "model": {}})
     critic_module = torch.nn.Module()
     critic_module.w = torch.nn.Parameter(torch.tensor(0.3))
-    critic = dp_critic_module.DataParallelPPOCritic(config, critic_module, torch.optim.SGD(critic_module.parameters(), lr=0.0))
+    critic = dp_critic_module.DataParallelPPOCritic(config, critic_module, SGD(critic_module.parameters(), lr=0.0))
     # bf16 value predictions mixed with fp32 returns: the dtype mix the bf16 critic produces on GPU.
     vpreds = torch.randn(BATCH, RESPONSE_LEN).to(torch.bfloat16)
     monkeypatch.setattr(critic, "_forward_micro_batch",

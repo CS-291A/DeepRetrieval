@@ -14,11 +14,9 @@
 
 import os
 import torch
-import transformers
 
 from verl.third_party.vllm import LLM, vllm_version
-from verl.utils.model import update_model_config
-from vllm import SamplingParams
+from vllm import SamplingParams  # pyright: ignore[reportMissingImports]  # vllm is Linux/CUDA-only (gpu extra)
 from transformers import AutoTokenizer, AutoConfig, AutoModelForCausalLM
 
 from transformers import GenerationConfig
@@ -166,7 +164,7 @@ def test_vllm_with_hf():
     print(f'hf response: {hf_response_tokens}')
     print(f'vllm response: {vllm_response_tokens}')
     assert are_lists_similar(hf_response_tokens, vllm_response_tokens), \
-        f'Strings differ more than 10%:\n'
+        'Strings differ more than 10%:\n'
     print('Check Pass')
 
 

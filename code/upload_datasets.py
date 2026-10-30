@@ -42,7 +42,7 @@ def create_huggingface_repo(repo_id, token, repo_type="dataset"):
         logger.info(f"Repository '{repo_id}' created/confirmed.")
         return True
     except Exception as e:
-        logger.error(f"Failed to create repository '{repo_id}': {str(e)}")
+        logger.error(f"Failed to create repository '{repo_id}': {e!s}")
         return False
 
 def should_skip_path(path, skip_patterns):
@@ -106,7 +106,7 @@ def upload_category(source_path, target_path, repo_id, token, verbose=False, dry
                 # List some of the files that would be uploaded
                 sample_files = list(glob.iglob(os.path.join(temp_dir, '**', '*.parquet'), recursive=True))[:10]
                 if sample_files:
-                    logger.info(f"Sample files to upload:")
+                    logger.info("Sample files to upload:")
                     for f in sample_files:
                         logger.info(f"  - {os.path.relpath(f, temp_dir)}")
             
@@ -131,7 +131,7 @@ def upload_category(source_path, target_path, repo_id, token, verbose=False, dry
             return True
             
     except Exception as e:
-        logger.error(f"Error uploading '{source_path}': {str(e)}")
+        logger.error(f"Error uploading '{source_path}': {e!s}")
         return False
 
 def main():

@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Any
+
 import pytest
 import ray
 import torch
@@ -38,7 +40,7 @@ class ModelActor(Worker):
         pass
 
 
-class HackSelf():
+class HackSelf:
 
     def __init__(self):
         pass
@@ -65,7 +67,7 @@ def test():
     resource_pool = RayResourcePool([2], use_gpu=True, name_prefix='a')
 
     class_with_args = RayClassWithInitArgs(cls=ModelActor)
-    shard_wg = RayWorkerGroup(resource_pool, class_with_args)
+    shard_wg: Any = RayWorkerGroup(resource_pool, class_with_args)  # worker methods are bound onto the group at runtime
 
     test_bs = 8
     test_proto = DataProto(TensorDict({

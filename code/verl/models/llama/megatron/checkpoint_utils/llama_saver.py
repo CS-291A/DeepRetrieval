@@ -20,7 +20,6 @@ from megatron.model import DistributedDataParallel as LocalDDP
 from torch.nn.parallel import DistributedDataParallel as torchDDP
 import torch
 import time
-from typing import Optional
 import torch.distributed as dist
 from megatron import get_args
 
@@ -116,8 +115,7 @@ def merge_megatron_ckpt_llama(wrapped_models, config, is_value_model=False, dtyp
     for i, wrapped_model in enumerate(wrapped_models):
         models[i] = unwrap_model(wrapped_model, (torchDDP, LocalDDP, Float16Module))
         assert len(models[i].model.layers
-                  ) == num_layers_per_model, 'len model layers {} not equal to num_layers_per_model {}'.format(
-                      len(models[i].model.layers), num_layers_per_model)
+                  ) == num_layers_per_model, f'len model layers {len(models[i].model.layers)} not equal to num_layers_per_model {num_layers_per_model}'
 
     state_dict = dict()
 

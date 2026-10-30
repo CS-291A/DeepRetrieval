@@ -1,14 +1,10 @@
 import os
-from openai import OpenAI
-import pdb
 
 from langchain_openai import AzureChatOpenAI
-from langchain_community.callbacks import get_openai_callback
 from langchain_core.messages import HumanMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
-from langchain_core.output_parsers import JsonOutputParser
 
 from src.utils.api_keys import load_secret
 
@@ -28,8 +24,8 @@ def gpt_chat_35(prompt, query_dict):
     prompt = ChatPromptTemplate.from_template(prompt)
     
     model = AzureChatOpenAI(
-        deployment_name="gpt-35", # "gpt-35"
-        model_name='gpt-35-turbo'
+        azure_deployment="gpt-35", # "gpt-35"
+        model='gpt-35-turbo'
     )
     chain = prompt | model | StrOutputParser()
     
@@ -43,14 +39,14 @@ def gpt_chat_35_msg(prompt, max_tokens=None):
     
     if max_tokens is not None:
         model = AzureChatOpenAI(
-            deployment_name="gpt-35", # "gpt-35"
-            model_name='gpt-35-turbo',
-            max_tokens=max_tokens
+            azure_deployment="gpt-35", # "gpt-35"
+            model='gpt-35-turbo',
+            max_completion_tokens=max_tokens
         )
     else:
         model = AzureChatOpenAI(
-            deployment_name="gpt-35", # "gpt-35"
-            model_name='gpt-35-turbo',
+            azure_deployment="gpt-35", # "gpt-35"
+            model='gpt-35-turbo',
         )
     
     response = model.invoke([message]).content
@@ -62,8 +58,8 @@ def gpt_chat_4(prompt, query_dict):
     prompt = ChatPromptTemplate.from_template(prompt)
     
     model = AzureChatOpenAI(
-        deployment_name="gpt-4", # "gpt-35"
-        model_name='gpt-4'
+        azure_deployment="gpt-4", # "gpt-35"
+        model='gpt-4'
     )
     chain = prompt | model | StrOutputParser()
     
@@ -77,8 +73,8 @@ def gpt_chat_4omini(prompt):
     )
     
     model = AzureChatOpenAI(
-        deployment_name="gpt-4o-mini", # "gpt-35"
-        model_name='gpt-4o-mini'
+        azure_deployment="gpt-4o-mini", # "gpt-35"
+        model='gpt-4o-mini'
     )
     response = model.invoke([message]).content
     
@@ -92,14 +88,14 @@ def gpt_chat_4o(prompt, max_tokens=None):
     
     if max_tokens is not None:
         model = AzureChatOpenAI(
-            deployment_name="gpt-4o", # "gpt-35"
-            model_name='gpt-4o',
-            max_tokens=max_tokens
+            azure_deployment="gpt-4o", # "gpt-35"
+            model='gpt-4o',
+            max_completion_tokens=max_tokens
         )
     else:
         model = AzureChatOpenAI(
-            deployment_name="gpt-4o", # "gpt-35"
-            model_name='gpt-4o',
+            azure_deployment="gpt-4o", # "gpt-35"
+            model='gpt-4o',
         )
     response = model.invoke([message]).content
     
@@ -107,5 +103,5 @@ def gpt_chat_4o(prompt, max_tokens=None):
 
 
 if __name__ == "__main__":
-    temp = gpt_chat_35("Translate this sentence from English to French. I love programming.")
+    temp = gpt_chat_35_msg("Translate this sentence from English to French. I love programming.")
     print(temp)

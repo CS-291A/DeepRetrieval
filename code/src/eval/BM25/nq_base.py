@@ -1,13 +1,8 @@
-import re
-import random
-import os
 import json
-import argparse
 try:
-    import utils.java_init
+    import utils.java_init  # noqa: F401  (imported for its side effect: sets JAVA_HOME)
 except ImportError:
     print("Failed to import java_init")
-    pass
 
 from pyserini.search.lucene import LuceneSearcher
 from pyserini.eval.evaluate_dpr_retrieval import has_answers, SimpleTokenizer
@@ -22,6 +17,8 @@ def get_searcher():
     global _searcher
     if _searcher is None:
         _searcher = LuceneSearcher.from_prebuilt_index('wikipedia-dpr-100w')
+        if _searcher is None:  # pyserini prints the reason and returns None
+            raise RuntimeError("pyserini could not load the prebuilt index 'wikipedia-dpr-100w'")
     return _searcher
 
 def run_index_search_bm25(search_query, topk=50):

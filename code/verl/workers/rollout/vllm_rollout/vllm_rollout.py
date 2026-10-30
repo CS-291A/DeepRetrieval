@@ -24,7 +24,6 @@ When working with Megatron:
 - Do inference in tp. pp is treated as additional dp
 - After inference, all the parameters that doesn't belong to this pp rank is freed.
 """
-from typing import List
 from contextlib import contextmanager
 from omegaconf import DictConfig
 import torch
@@ -37,7 +36,7 @@ from verl.utils.torch_functional import get_eos_mask, pad_sequence_to_length
 from verl.workers.rollout.base import BaseRollout
 from verl.third_party.vllm import LLM, vllm_version
 from verl.third_party.vllm import parallel_state as vllm_ps
-from vllm import SamplingParams
+from vllm import SamplingParams  # pyright: ignore[reportMissingImports]  # vllm is Linux/CUDA-only (gpu extra)
 
 # TODO
 # 1. support pp in vllm
@@ -46,7 +45,7 @@ from vllm import SamplingParams
 
 
 # NOTE(sgm): add for verl. We can optimize it by making the dataloader yield List[int] without padding.
-def _pre_process_inputs(pad_token_id, prompt_token_ids: torch.Tensor) -> List[int]:
+def _pre_process_inputs(pad_token_id, prompt_token_ids: torch.Tensor) -> list[int]:
     # remove the left padding in the prompt token_id
     # pad_token_id = self.llm_engine.tokenizer.pad_token_id if self.llm_engine.tokenizer.pad_token_id is not None else self.llm_engine.tokenizer.eos_token_id
     non_pad_index = torch.nonzero(prompt_token_ids != pad_token_id, as_tuple=False)[0][0]
@@ -54,7 +53,7 @@ def _pre_process_inputs(pad_token_id, prompt_token_ids: torch.Tensor) -> List[in
     return token_ids
 
 
-def _pre_process_inputs_batch(pad_token_id, prompt_token_ids: torch.Tensor) -> List[List[int]]:
+def _pre_process_inputs_batch(pad_token_id, prompt_token_ids: torch.Tensor) -> list[list[int]]:
     """_pre_process_inputs for a whole (bs, prompt_length) batch with a single device-to-host copy."""
     token_ids = prompt_token_ids.cpu()
     non_pad = token_ids != pad_token_id
@@ -126,7 +125,7 @@ class vLLMRollout(BaseRollout):
         # supporting adding any sampling params from the config file
         for k in config.keys():
             if hasattr(SamplingParams(), str(k)):
-                kwargs[k] = config.get(k)
+                kwargs[str(k)] = config.get(k)  # DictConfig keys are str here
 
         print(f"kwargs: {kwargs}")
         self.sampling_params = SamplingParams(**kwargs)

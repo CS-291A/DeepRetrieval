@@ -13,7 +13,6 @@
 # limitations under the License.
 import os
 
-from transformers import AutoTokenizer
 from verl.utils import hf_tokenizer
 from verl.utils.dataset.sft_dataset import SFTDataset
 

@@ -14,7 +14,6 @@
 import os
 import torch
 from torch.utils.data import DataLoader
-from transformers import AutoTokenizer
 
 
 def get_gsm8k_data():

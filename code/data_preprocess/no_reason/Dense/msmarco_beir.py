@@ -1,15 +1,10 @@
-import re
 import os
-from datasets import Dataset, load_dataset, concatenate_datasets
-from random import randint, seed, choice
-from typing import List, Tuple
-from tqdm import tqdm
+from datasets import Dataset, concatenate_datasets
+from typing import Any, cast
+from collections.abc import Iterable
 from verl.utils.hdfs_io import copy, makedirs
 import argparse
 import json
-from collections import defaultdict, Counter
-import random
-import pdb
 
 INSTRUCTION = """
 You are an expert in generating queries for dense retrieval. Given a web search query, your task is to retain the original query while expanding it with additional semantically relevant information, to retrieve relevant passages that answer the query. If no useful expansion is needed, return the original query as is."""
@@ -158,15 +153,15 @@ if __name__ == '__main__':
     val_dataset = concatenate_datasets([val_dataset, test_dataset])
     
     lengths_list = []
-    for d in train_dataset:
+    for d in cast(Iterable[dict[str, Any]], train_dataset):
         lengths_list.append(len(d['prompt'][0]['content'].split()))
 
     lengths_list_test = []
-    for d in test_dataset:
+    for d in cast(Iterable[dict[str, Any]], test_dataset):
         lengths_list_test.append(len(d['prompt'][0]['content'].split()))
     
     lengths_list_val = []
-    for d in val_dataset:
+    for d in cast(Iterable[dict[str, Any]], val_dataset):
         lengths_list_val.append(len(d['prompt'][0]['content'].split()))
     
     print(f"Average length of train dataset: {sum(lengths_list) / len(lengths_list)}")

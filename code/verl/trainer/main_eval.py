@@ -26,7 +26,7 @@ import numpy as np
 def select_reward_fn(data_source):
     if data_source == 'lighteval/MATH':
         try:
-            from verl.utils.reward_score import math
+            from verl.utils.reward_score import math  # pyright: ignore[reportAttributeAccessIssue]  # upstream verl module not shipped here; ImportError handled below
         except ImportError as e:
             raise ImportError("main_eval needs verl.utils.reward_score.math (upstream verl), "
                               "which this repository does not ship.") from e

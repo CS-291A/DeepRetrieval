@@ -22,7 +22,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
 from pprint import pprint
-from typing import Type, Dict
+from collections.abc import Callable
 
 import numpy as np
 from codetiming import Timer
@@ -36,7 +36,7 @@ from verl.trainer.ppo import core_algos
 from verl.utils.seqlen_balancing import get_seqlen_balanced_partitions, log_seqlen_unbalance
 from verl.utils.torch_functional import scalars_to_floats
 
-WorkerType = Type[Worker]
+WorkerType = type[Worker]
 
 
 class Role(Enum):
@@ -82,7 +82,9 @@ import torch
 from verl.utils.torch_functional import masked_mean
 
 
-def apply_kl_penalty(data: DataProto, kl_ctrl: core_algos.AdaptiveKLController, kl_penalty='kl'):
+def apply_kl_penalty(data: DataProto,
+                     kl_ctrl: core_algos.FixedKLController | core_algos.AdaptiveKLController,
+                     kl_penalty='kl'):
     responses = data.batch['responses']
     response_length = responses.size(1)
     token_level_scores = data.batch['token_level_scores']
@@ -91,7 +93,7 @@ def apply_kl_penalty(data: DataProto, kl_ctrl: core_algos.AdaptiveKLController, 
     response_mask = attention_mask[:, -response_length:]
 
     # compute kl between ref_policy and current policy
-    if 'ref_log_prob' in data.batch.keys():
+    if 'ref_log_prob' in data.batch.keys():  # pyright: ignore[reportOperatorIssue]  # tensordict 0.5 types NestedKey as a runtime class, so str keys are rejected by the stub
         kld = core_algos.kl_penalty(data.batch['old_log_probs'], data.batch['ref_log_prob'],
                                     kl_penalty=kl_penalty)  # (batch_size, response_length)
         kld = kld * response_mask
@@ -192,11 +194,20 @@ def compute_data_metrics(batch, use_critic=True):
     valid_adv = torch.masked_select(advantages, response_mask)
     valid_returns = torch.masked_select(returns, response_mask)
 
+    critic_metrics = {}
     if use_critic:
         values = batch.batch['values']
         valid_values = torch.masked_select(values, response_mask)
         return_diff_var = torch.var(valid_returns - valid_values)
         return_var = torch.var(valid_returns)
+        critic_metrics = {
+            # values
+            'critic/values/mean': torch.mean(valid_values).detach().item(),
+            'critic/values/max': torch.max(valid_values).detach().item(),
+            'critic/values/min': torch.min(valid_values).detach().item(),
+            # vf explained var
+            'critic/vf_explained_var': (1.0 - return_diff_var / (return_var + 1e-5)).detach().item(),
+        }
 
     metrics = {
         # score
@@ -227,14 +238,7 @@ def compute_data_metrics(batch, use_critic=True):
             torch.max(valid_returns).detach().item(),
         'critic/returns/min':
             torch.min(valid_returns).detach().item(),
-        **({
-            # values
-            'critic/values/mean': torch.mean(valid_values).detach().item(),
-            'critic/values/max': torch.max(valid_values).detach().item(),
-            'critic/values/min': torch.min(valid_values).detach().item(),
-            # vf explained var
-            'critic/vf_explained_var': (1.0 - return_diff_var / (return_var + 1e-5)).detach().item(),
-        } if use_critic else {}),
+        **critic_metrics,
 
         # response length
         'response_length/mean':
@@ -267,11 +271,11 @@ ANSWER_SPAN_HIT_MIN_REWARD = ((5, 6.0), (20, 5.0), (50, 3.0), (100, 2.0), (1000,
 ANSWER_SPAN_FORMAT_ERROR_REWARD = -4
 # BEIR / msmarco ndcg tasks: total reward = 0.1 + ndcg when ndcg > 0, else 0 (or -2 for a bad format).
 NDCG_FORMAT_REWARD = 0.1
-# bird / spider / wikisql: 0.1 + 1 for matching execution results; every other outcome is <= 0.1 + 0.3.
+# bird / spider: 0.1 + 1 for matching execution results; every other outcome is <= 0.1 + 0.3.
 SQL_ACCURATE_MIN_REWARD = 1.0
 
 
-def compute_answer_span_hit_ratios(reward_tensor: torch.Tensor) -> Dict[int, float]:
+def compute_answer_span_hit_ratios(reward_tensor: torch.Tensor) -> dict[int, float]:
     """Fraction of samples whose answer span is retrieved within the top-k, for each k of the reward table."""
     if reward_tensor.dim() != 1 or reward_tensor.numel() == 0:
         raise ValueError(f'expected a non-empty 1-D reward tensor, got shape {tuple(reward_tensor.shape)}')
@@ -531,13 +535,13 @@ def compute_timing_metrics(batch, timing_raw):
 
 
 @contextmanager
-def _timer(name: str, timing_raw: Dict[str, float]):
+def _timer(name: str, timing_raw: dict[str, float]):
     with Timer(name=name, logger=None) as timer:
         yield
     timing_raw[name] = timer.last
 
 
-class RayPPOTrainer(object):
+class RayPPOTrainer:
     """
     Note that this trainer runs on the driver process on a single CPU/GPU node.
     """
@@ -549,9 +553,9 @@ class RayPPOTrainer(object):
                  tokenizer,
                  role_worker_mapping: dict[Role, WorkerType],
                  resource_pool_manager: ResourcePoolManager,
-                 ray_worker_group_cls: RayWorkerGroup = RayWorkerGroup,
-                 reward_fn=None,
-                 val_reward_fn=None):
+                 ray_worker_group_cls: type[RayWorkerGroup] = RayWorkerGroup,
+                 reward_fn: Callable[[DataProto], torch.Tensor] | None = None,
+                 val_reward_fn: Callable[[DataProto], torch.Tensor] | None = None):
 
         # assert torch.cuda.is_available(), 'cuda must be available on driver'
 
@@ -669,6 +673,7 @@ class RayPPOTrainer(object):
 
             # evaluate using reward_function
             # for certain reward function (e.g. sandbox), the generation can overlap with reward
+            assert self.val_reward_fn is not None, '_validate is only called when val_reward_fn is set'
             reward_tensor = self.val_reward_fn(test_batch)
 
             reward_tensor_lst.append(reward_tensor)
@@ -689,10 +694,7 @@ class RayPPOTrainer(object):
             if 'pubmed' in data_source or 'ctgov' in data_source or 'pmd_no_reason' in data_source or 'trial_no_reason' in data_source:
                 pass
             elif 'scifact' in data_source or 'fiqa' in data_source or 'nfcorpus' in data_source or 'hotpotqa' in data_source \
-                    or 'fever' in data_source or 'msmarco_beir' in data_source:
-                metric_dict[f'val/test_score/{data_source}'] = compute_mean_ndcg(torch.tensor(rewards))
-                
-            elif 'msmarco' in data_source:
+                    or 'fever' in data_source or 'msmarco_beir' in data_source or 'msmarco' in data_source:
                 metric_dict[f'val/test_score/{data_source}'] = compute_mean_ndcg(torch.tensor(rewards))
                 # format_score = 0.1
                 # recall_score = 0.2
@@ -706,7 +708,7 @@ class RayPPOTrainer(object):
                 for k, hit_ratio in compute_answer_span_hit_ratios(torch.tensor(rewards)).items():
                     metric_dict[f'val/recall@{k}/{data_source}'] = hit_ratio
             
-            elif 'bird' in data_source or 'spider' in data_source or 'wikisql' in data_source:
+            elif 'bird' in data_source or 'spider' in data_source:
                 metric_dict[f'val/test_score/{data_source}'] = compute_sql_accuracy(torch.tensor(rewards))
 
             else:
@@ -899,6 +901,7 @@ class RayPPOTrainer(object):
                             batch = batch.union(reward_tensor)
 
                         # we combine with rule-based rm
+                        assert self.reward_fn is not None, 'RayPPOTrainer.fit requires reward_fn'
                         reward_tensor = self.reward_fn(batch)
                         batch.batch['token_level_scores'] = reward_tensor
 
@@ -942,7 +945,7 @@ class RayPPOTrainer(object):
                         # reward_metrics = compute_reward_metrics_recall_at_k(batch)
                     elif 'nq_serini' in self.config.data.train_files or 'triviaqa' in self.config.data.train_files or 'squad' in self.config.data.train_files:
                         reward_metrics = compute_reward_metrics_nq_serini(batch)
-                    elif 'sql' in self.config.data.train_files or 'bird' in self.config.data.train_files or 'spider' in self.config.data.train_files or 'wikisql' in self.config.data.train_files:
+                    elif 'sql' in self.config.data.train_files or 'bird' in self.config.data.train_files or 'spider' in self.config.data.train_files:
                         reward_metrics = compute_reward_metrics_sql(batch)
                     else:
                         reward_metrics = compute_reward_metrics_search_engine(batch)

@@ -19,6 +19,8 @@ answers = {}
 for key, value in data.items():
     match = re.search(r"<answer>\s*(.*?)\s*</answer>", value["generated_text"], re.DOTALL)
     try:
+        if match is None:  # handled below: the raw generated text is kept
+            raise ValueError("no query found in the generated text")
         query_text = match.group(1)
         # json loads
         gen_query = json.loads(query_text)['query']   

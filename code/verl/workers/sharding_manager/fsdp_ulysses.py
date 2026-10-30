@@ -14,10 +14,8 @@
 """
 Contains a resharding manager that binds weights from FSDP zero3 to XPerfGPT
 """
-from typing import Optional
 from .base import BaseShardingManager
 
-import random
 from torch.distributed.device_mesh import DeviceMesh
 
 from verl.utils.torch_functional import allgather_dict_tensors
@@ -35,7 +33,7 @@ class FSDPUlyssesShardingManager(BaseShardingManager):
     Sharding manager to support data resharding when using FSDP + Ulysses
     """
 
-    def __init__(self, device_mesh: DeviceMesh):
+    def __init__(self, device_mesh: DeviceMesh | None):
         super().__init__()
         self.device_mesh = device_mesh
         self.seed_offset = 12345
@@ -70,7 +68,7 @@ class FSDPUlyssesShardingManager(BaseShardingManager):
             data.batch = allgather_dict_tensors(data.batch.contiguous(), size=sp_size, group=group, dim=0)
             data.batch = data.batch.to(prev_device)
             # all gather non_tensor_batch
-            all_non_tensor_batch = [None for _ in range(sp_size)]
+            all_non_tensor_batch: list[dict[str, np.ndarray]] = [{} for _ in range(sp_size)]  # overwritten by all_gather_object
             torch.distributed.all_gather_object(all_non_tensor_batch, data.non_tensor_batch, group=group)
             data.non_tensor_batch = {
                 k: np.concatenate([d[k] for d in all_non_tensor_batch]) for k in data.non_tensor_batch

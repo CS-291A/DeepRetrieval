@@ -17,6 +17,6 @@ from .tokenizer import CharTokenizer
 
 from transformers import AutoTokenizer, LlamaConfig
 
-AutoTokenizer.register(LlamaConfig, CharTokenizer, exist_ok=True)
+AutoTokenizer.register(LlamaConfig, CharTokenizer, exist_ok=True)  # pyright: ignore[reportArgumentType]  # transformers 4.47 defines register without @staticmethod
 
-__all__ = ['DigitCompletion', 'generate_ground_truth_response', 'CharTokenizer']
+__all__ = ['CharTokenizer', 'DigitCompletion', 'generate_ground_truth_response']

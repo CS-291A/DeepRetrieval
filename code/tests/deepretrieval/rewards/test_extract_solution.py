@@ -5,7 +5,7 @@ REWARD_MODULES = [
     *(f"verl.utils.reward_score.{name}" for name in (
         "bird", "bird_no_reason", "ctgov", "fever", "fiqa", "hotpotqa", "msmarco", "msmarco_beir",
         "nfcorpus", "nq_no_reason", "nq_serini", "pmd_no_reason", "pubmed", "scifact", "screening",
-        "spider", "spider_no_reason", "squad", "squad_no_reason", "tqa_no_reason", "triviaqa", "wikisql")),
+        "spider", "spider_no_reason", "squad", "squad_no_reason", "tqa_no_reason", "triviaqa")),
     *(f"verl.utils.reward_score_dense.{name}" for name in (
         "fever", "hotpotqa", "msmarco_beir", "nfcorpus", "scifact")),
 ]

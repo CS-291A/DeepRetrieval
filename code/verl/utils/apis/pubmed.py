@@ -28,6 +28,7 @@ class PubmedAPI:
     def search_with_query(self, query, topk=-1):
         """Search with query input to get the response of pmids. Optimized for speed."""
         err_msg = ""
+        pmid_list = []  # rebound by every attempt; retry >= 0 means at least one
         if self.api_key:
             query += f"&api_key={self.api_key}"
         if '&retmode=json' not in query:
@@ -51,7 +52,7 @@ class PubmedAPI:
             pmid_list = []
             try:
                 # First get the count of results
-                count_query = original_query + f'&retmax=0'
+                count_query = original_query + '&retmax=0'
                 response = requests.get(count_query, timeout=REQUEST_TIMEOUT)
                 
                 if response.status_code != 200:
@@ -125,6 +126,7 @@ class PubmedAPI:
             return pd.DataFrame()
 
         err_msg = ""
+        papers = pd.DataFrame()  # rebound on success; on failure we raise below
         
         for i in range(self.retry + 1):
             if i > 0:
@@ -149,7 +151,7 @@ class PubmedAPI:
 
                     if response.status_code != 200:
                         if response.status_code == 414:
-                            raise ConnectionError(f"Pubmed query too long!")
+                            raise ConnectionError("Pubmed query too long!")
                         else:
                             raise ConnectionError(f"Pubmed connection error occurred: {response.text}")
 
@@ -264,7 +266,7 @@ class PubmedAPI:
                         abstract_text = ""
 
                     # Get pmid
-                    article_ids = [a for a in article.findall(".//ArticleId") if a.get("IdType").lower() == "pubmed"]
+                    article_ids = [a for a in article.findall(".//ArticleId") if a.get("IdType", "").lower() == "pubmed"]
                     if len(article_ids) > 0:
                         pmid = article_ids[0].text
                         all_abstracts[pmid] = abstract_text

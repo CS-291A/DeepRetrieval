@@ -2,7 +2,6 @@ import json
 import sys
 import os
 from tqdm import tqdm
-import pdb
 sys.path.append('./')
 
 from src.Dense.fever.search import PyseriniFaissSearcher
@@ -64,6 +63,8 @@ if __name__ == '__main__':
         targets = {str(res[item['qid']]['generated_text']): item['target'] for item in batch} 
         scores = {str(res[item['qid']]['generated_text']): item['score'] for item in batch}
         
+        if search_system is None:
+            raise FileNotFoundError("Faiss index not found for fever")
         results = search_system.batch_search(queries, top_k=10, threads=16)
         
         for query in queries:
