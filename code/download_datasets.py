@@ -96,7 +96,6 @@ def download_files(repo_id, files, output_dir, token=None, verbose=False):
                 repo_type="dataset",
                 local_dir=output_dir,
                 token=token,
-                local_dir_use_symlinks=False
             )
             
             if verbose:

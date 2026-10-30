@@ -1,3 +1,4 @@
+import ast
 import json
 import sys
 import os
@@ -60,7 +61,7 @@ if __name__ == '__main__':
     for i in tqdm(range(0, len(test_data))):
         item = test_data[i]
         query = item['generated_text']
-        target = eval(item['target'])
+        target = ast.literal_eval(item['target'])
         scores = [1 for _ in range(len(target))]
         
         hits = search_system.search(query, k=10)

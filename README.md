@@ -60,47 +60,34 @@ The system works by having an LLM generate reasoning steps in a `<think>` sectio
 
 ## 📦 Installation
 
-**General Installation (for all retrieval methods):**
-```
-conda create -n zero python=3.9
-# install torch [or you can skip this step and let vllm to install the correct version for you]
-pip install torch==2.4.0 --index-url https://download.pytorch.org/whl/cu121
-# install vllm
-pip3 install vllm==0.6.3 # or you can install 0.5.4, 0.4.2 and 0.3.1
-pip3 install ray
+The Python project lives in `code/` and is managed with [uv](https://docs.astral.sh/uv/) (Python 3.10; `code/uv.lock` pins every dependency, including `torch==2.4.0`, `vllm==0.6.3`, `numpy<2` and `transformers<4.48`).
 
-# verl
+```bash
 cd code
-pip install -e .
-
-# flash attention 2
-pip3 install flash-attn --no-build-isolation
-# quality of life
-pip install wandb IPython matplotlib huggingface_hub
+uv sync                                  # base: verl, torch, transformers, ray, wandb, ...
+uv sync --extra retrieval                # + pyserini 0.22.1, faiss, func_timeout, install-jdk (BM25 / dense / SQL)
+uv sync --extra gpu --extra retrieval    # Linux + CUDA only: + vllm 0.6.3, flash-attn 2.6.3 (needed for training/rollout)
+uv sync --extra baselines                # + openai, anthropic, boto3, langchain-*, trl (GPT/Claude baselines, SQL cold-start SFT)
+uv run pytest                            # run the test suite (GPU/data tests are skipped when unavailable)
 ```
 
-**(If you only want to run the Search Engine Retrieval, you can skip the following steps.)**
+Extras combine (`uv sync --extra gpu --extra retrieval --extra baselines`); each `uv sync` installs exactly the extras you name. Run commands with `uv run <cmd>` or after `source .venv/bin/activate`.
 
-If using sparse retrieval (e.g., BM25) or dense retrieval (e.g., DPR), please also install the following:
-```
-# we use pyserini for efficient retrieval and evaluation
-pip install pyserini    # the version we used is 0.22.1
+The GPT/Claude baselines (`src/utils/`) read credentials on first use from `$OPENAI_API_KEY`, `$AZURE_OPENAI_API_KEY`, or `$AWS_ACCESS_KEY_ID` + `$AWS_SECRET_ACCESS_KEY`, falling back to the key files in the working directory (`openai_api.key`, `openai_api_azure.key`, `aws_access.key` / `claude_api_aws.key`).
 
-# if you don't have faiss installed, install it with:
-pip install faiss-gpu==1.7.2    # the version we used is 1.7.2
+**(If you only want to run the Search Engine Retrieval, you can skip the following step.)**
 
-# if you don't have java installed, install it with:
-pip install install-jdk && python -c "import jdk; jdk.install('11')"
-
-# support sql execution
-pip install func_timeout
+Pyserini (sparse/dense retrieval) needs a Java runtime. If you don't have one, install it with:
+```bash
+uv run python -c "import jdk; jdk.install('11')"
 ```
 
 ## ⚡️ Easy-to-use API for Query Rewriting
 
 ```bash
-sh vllm_host.sh # you can specify the local port and the model to use
-python query_rewrite.py --query "Who built DeepRetrieval in 2025?"
+cd code
+sh ../vllm_host.sh # you can specify the local port and the model to use
+python src/query_rewrite.py --query "Who built DeepRetrieval in 2025?"  # add --model <name> if you serve a different model
 # Original query: Who built DeepRetrieval in 2025?
 # Rewritten query: (The DeepRetrieval system, which was built in 2025)
 ```
@@ -170,7 +157,8 @@ modify `compute_reward_metrics()` in `code/verl/trainer/ppo/ray_trainer.py`
 
 ## 🏃 Run Training
 ```bash
-conda activate zero
+cd code
+source .venv/bin/activate   # environment created by `uv sync` (see Installation)
 ```
 
 For example, for PubMed:
@@ -254,37 +242,7 @@ export CUDA_VISIBLE_DEVICES=4,7
 This ensures CUDA is managed correctly by SLURM.
 
 ### ⚙️ Dependency Conflicts
-When setting up the environment, you might encounter pip dependency warnings such as:
-```
-ERROR: pip's dependency resolver does not currently take into account all the packages that are installed.
-This behaviour is the source of the following dependency conflicts.
-matplotlib 3.9.4 requires pyparsing>=2.3.1, which is not installed.
-mne 1.8.0 requires decorator, which is not installed.
-pyhealth 1.1.4 requires bitsandbytes, which is not installed.
-```
-
-To fix these missing dependencies, simply run:
-```bash
-pip install pyparsing decorator bitsandbytes
-```
-
-You may also encounter NumPy incompatibility warnings like:
-```
-pyhealth 1.1.4 requires numpy<2.0, but you have numpy 2.0.2 which is incompatible.
-outlines 0.0.46 requires numpy<2.0.0, but you have numpy 2.0.2 which is incompatible.
-vllm 0.6.3 requires numpy<2.0.0, but you have numpy 2.0.2 which is incompatible.
-```
-To fix these, reinstall a compatible NumPy version and re-install dependent packages:
-```bash
-
-pip install "numpy<2.0.0" --force-reinstall
-pip install transformers==4.46.3
-pip install vllm==0.6.3
-pip install verl==0.1
-pip install outlines==0.0.46
-pip install pyserini
-
-```
+The pip/conda dependency conflicts previously documented here (missing `pyparsing`/`decorator`/`bitsandbytes`, and `numpy>=2` breaking vllm 0.6.3 / outlines 0.0.46) do not arise with the uv setup: `code/uv.lock` resolves one consistent set with `numpy<2`, `transformers<4.48` and `vllm==0.6.3`. If you still install with pip, pin those three versions.
 </details>
 
 ## 🤝 Acknowledgement

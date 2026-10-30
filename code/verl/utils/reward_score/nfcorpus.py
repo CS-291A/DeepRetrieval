@@ -1,16 +1,13 @@
 import re
 import random
 import numpy as np
-import ast
-import operator
-import pdb
 import json
+import logging
 import sys
 import os
 sys.path.append('./')
 
 from src.Lucene.nfcorpus.search import PyseriniMultiFieldSearch
-from pyserini.search.faiss import FaissSearcher
 from src.Lucene.utils import ndcg_at_k
 
 if not os.path.exists("data/local_index_search/nfcorpus/pyserini_index"):
@@ -29,7 +26,7 @@ def extract_solution(solution_str):
         processed_str = solution_str.split("<|im_start|>assistant", 1)[1].strip()
     else:
         print("[Error] Failed to locate model response header")
-        return None, processed_str
+        return None, ""
 
     # Regular expression to find the last occurrence of <answer>...</answer>
     answer_pattern = r'<answer>(.*?)</answer>'
@@ -110,7 +107,7 @@ def check_json_format(json_str, do_print=False):
             return False
 
         return True
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, TypeError):  # TypeError: `in` on a JSON number / null
         if do_print:
             print("[Error] JSON decoding failed")
         return False
@@ -122,18 +119,29 @@ def retriver_items(query, top_k=3000, threads=16):
     
 def calculate_answer_score(json_str, label, scores, top_k, do_print=False):
     """Calculate answer score based on final_prediction idx."""
+    if search_system is None:
+        raise RuntimeError(f"Search index for {__name__} was not loaded (see the import-time warning); "
+                           "build it before computing rewards")
+    if len(label) == 0:
+        raise ValueError(f"{__name__} got an empty label (no relevant documents)")
+    # Malformed model output scores -2.
     try:
-        data = json.loads(json_str)
-        query = data['query']
+        query = json.loads(json_str)['query']
+    except (json.JSONDecodeError, KeyError, TypeError):
+        print("[Error] Error in evaluation")
+        return -2
+    
+    # Executing the model's query must never crash training: any failure is logged and scored
+    # -2, exactly as before. Misconfiguration was already rejected above.
+    try:
         target = label
         results = retriver_items(query, top_k=top_k, threads=32)
         pred_results = [item[0] for item in results[query]]
         answer_score = ndcg_at_k(pred_results, target, top_k, rel_scores=scores)
+    except Exception:
+        logging.getLogger(__name__).exception(f"Search/scoring failed for model query {str(query)[:200]!r}; scoring -2")
+        return -2
 
-    except:
-        print("[Error] Error in evaluation")
-        answer_score = -2
-    
     return answer_score
 
 def compute_score(solution_str, ground_truth, data_source, format_reward=0.1, answer_reward=1.):

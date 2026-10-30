@@ -1,27 +1,30 @@
 import os
 from openai import OpenAI
 import pdb
-with open('./openai_api_azure.key', 'r') as f:
-    api_key = f.read().strip()
-    
-    
-os.environ["OPENAI_API_TYPE"] = "azure"
-os.environ["AZURE_OPENAI_ENDPOINT"] = "https://zifeng-gpt-2.openai.azure.com/"
-os.environ["AZURE_OPENAI_API_KEY"] = api_key
-os.environ["OPENAI_API_VERSION"] = "2023-03-15-preview"
 
 from langchain_openai import AzureChatOpenAI
 from langchain_community.callbacks import get_openai_callback
-from langchain.schema import HumanMessage
+from langchain_core.messages import HumanMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
 from langchain_core.output_parsers import JsonOutputParser
 
+from src.utils.api_keys import load_secret
+
+
+def _configure_azure():
+    """Export the Azure settings AzureChatOpenAI reads; key from env, else ./openai_api_azure.key."""
+    os.environ["AZURE_OPENAI_API_KEY"] = load_secret("AZURE_OPENAI_API_KEY", "./openai_api_azure.key")
+    os.environ["OPENAI_API_TYPE"] = "azure"
+    os.environ["AZURE_OPENAI_ENDPOINT"] = "https://zifeng-gpt-2.openai.azure.com/"
+    os.environ["OPENAI_API_VERSION"] = "2023-03-15-preview"
+
 
 
 
 def gpt_chat_35(prompt, query_dict):
+    _configure_azure()
     prompt = ChatPromptTemplate.from_template(prompt)
     
     model = AzureChatOpenAI(
@@ -33,6 +36,7 @@ def gpt_chat_35(prompt, query_dict):
     return chain.invoke(query_dict)
 
 def gpt_chat_35_msg(prompt, max_tokens=None):
+    _configure_azure()
     message = HumanMessage(
         content=prompt
     )
@@ -54,6 +58,7 @@ def gpt_chat_35_msg(prompt, max_tokens=None):
     return response
     
 def gpt_chat_4(prompt, query_dict):
+    _configure_azure()
     prompt = ChatPromptTemplate.from_template(prompt)
     
     model = AzureChatOpenAI(
@@ -66,6 +71,7 @@ def gpt_chat_4(prompt, query_dict):
 
 
 def gpt_chat_4omini(prompt):
+    _configure_azure()
     message = HumanMessage(
         content=prompt
     )
@@ -79,6 +85,7 @@ def gpt_chat_4omini(prompt):
     return response
 
 def gpt_chat_4o(prompt, max_tokens=None):
+    _configure_azure()
     message = HumanMessage(
         content=prompt
     )

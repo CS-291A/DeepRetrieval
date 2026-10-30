@@ -332,7 +332,7 @@ def load_state_dict_to_megatron_llama(state_dict, wrapped_models, config, params
         chunk_shape = obj_list[0]
         if chunk_shape is None:
             # all or none ranks in the mp_group should reach here
-            print_rank_0(f"tp_shard tensor:[{name}] not in state_dict, skip loading")
+            print_rank_0(f"tp_shard tensor:[{q_name}, {k_name}, {v_name}] not in state_dict, skip loading")
             return
 
         if tensor is None:

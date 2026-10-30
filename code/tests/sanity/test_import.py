@@ -13,11 +13,16 @@
 # limitations under the License.
 
 
+from pathlib import Path
+
+
 def test_import():
     import verl
-    print(verl.__version__)
+    version_file = Path(verl.__file__).parent / 'version' / 'version'
+    assert verl.__version__ == version_file.read_text().strip()
 
 
 def test_single_controller_import():
     import verl.single_controller
-    print(verl.single_controller.__version__)
+    version_file = Path(verl.single_controller.__file__).parent / 'version' / 'version'
+    assert verl.single_controller.__version__ == version_file.read_text().strip()

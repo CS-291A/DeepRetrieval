@@ -28,13 +28,13 @@ for key, value in data.items():
         # json loads
         try:
             gen_query = json.loads(query_text)['query']   
-        except:
+        except Exception:
             gen_query = query_text
         answers[key] = {
             "generated_text": gen_query,
             "target": value["target"],
         }
-    except:
+    except Exception:
         answers[key] = {
             "generated_text": value["generated_text"],
             "target": value["target"],

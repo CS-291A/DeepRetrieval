@@ -19,7 +19,7 @@ import ray
 from ray.util import list_named_actors
 from ray.util.placement_group import placement_group, PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy, NodeAffinitySchedulingStrategy
-from ray.experimental.state.api import get_actor
+from ray.util.state import get_actor
 
 from verl.single_controller.base import WorkerGroup, ResourcePool, ClassWithInitArgs, Worker
 
@@ -385,9 +385,11 @@ def _bind_workers_method_to_parent(cls, key, user_defined_cls):
     for method_name in dir(user_defined_cls):
         try:
             method = getattr(user_defined_cls, method_name)
-            assert callable(method), f"{method_name} in {user_defined_cls} is not callable"
-        except Exception as e:
-            # if it is a property, it will fail because Class doesn't have instance property
+        except AttributeError:  # nsp: ignore NSP007 instance-only attributes are not worker methods; skip them
+            # descriptors that only resolve on instances raise AttributeError on class access
+            continue
+        if not callable(method):
+            # properties and plain class attributes are not worker methods
             continue
 
         if hasattr(method, MAGIC_ATTR):

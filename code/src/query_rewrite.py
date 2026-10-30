@@ -2,6 +2,11 @@ import requests
 import json
 import argparse
 import re
+import sys
+
+# The model served by vllm_host.sh at the repository root.
+DEFAULT_MODEL = "DeepRetrieval/DeepRetrieval-NQ-BM25-3B"
+REQUEST_TIMEOUT_S = 120
 
 INSTRUCTION = """
 You are a query rewriting expert. Your task is to create query terms for user query to find relevant literature in a massive corpus.
@@ -47,14 +52,15 @@ def extract_query(response_text: str) -> str:
         else:
             raise ValueError("No answer tags found in response")
     except Exception as e:
-        raise ValueError(f"Failed to extract query from response: {e}")
+        raise ValueError(f"Failed to extract query from response: {e}") from e
 
-def rewrite_query(query: str, api_url: str = "http://localhost:8000/v1/chat/completions") -> str:
+def rewrite_query(query: str, api_url: str = "http://localhost:8000/v1/chat/completions",
+                  model: str = DEFAULT_MODEL) -> str:
     """Send the query to the vLLM API and get the rewritten version."""
     messages = format_prompt(query)
     
     payload = {
-        "model": "DeepRetrieval/DeepRetrieval-TriviaQA-BM25-3B",
+        "model": model,
         "messages": messages,
         "temperature": 0.7,
         "max_tokens": 512
@@ -63,7 +69,7 @@ def rewrite_query(query: str, api_url: str = "http://localhost:8000/v1/chat/comp
     headers = {"Content-Type": "application/json"}
     
     try:
-        response = requests.post(api_url, headers=headers, json=payload)
+        response = requests.post(api_url, headers=headers, json=payload, timeout=REQUEST_TIMEOUT_S)
         response.raise_for_status()
         result = response.json()
         
@@ -75,24 +81,27 @@ def rewrite_query(query: str, api_url: str = "http://localhost:8000/v1/chat/comp
         return rewritten_query
         
     except requests.exceptions.RequestException as e:
-        raise Exception(f"API request failed: {e}")
+        raise RuntimeError(f"API request failed: {e}") from e
     except Exception as e:
-        raise Exception(f"Failed to process response: {e}")
+        raise RuntimeError(f"Failed to process response: {e}") from e
 
 def main():
     parser = argparse.ArgumentParser(description="Query rewriting using vLLM API")
     parser.add_argument("--query", type=str, required=True, help="The query to rewrite")
     parser.add_argument("--api_url", type=str, default="http://localhost:8000/v1/chat/completions",
                       help="URL of the vLLM API server (default: http://localhost:8000/v1/chat/completions)")
+    parser.add_argument("--model", type=str, default=DEFAULT_MODEL,
+                      help=f"Model name the vLLM server was started with (default: {DEFAULT_MODEL})")
     
     args = parser.parse_args()
     
     try:
-        rewritten_query = rewrite_query(args.query, args.api_url)
+        rewritten_query = rewrite_query(args.query, args.api_url, args.model)
         print(f"Original query: {args.query}")
         print(f"Rewritten query: {rewritten_query}")
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 if __name__ == "__main__":
     main() 

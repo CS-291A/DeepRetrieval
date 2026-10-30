@@ -15,7 +15,16 @@
 import os
 
 
+def require_cuda(component: str) -> None:
+    """Fail fast with a readable error where NCCL/CUDA-only code would otherwise fail obscurely."""
+    import torch
+    if not torch.cuda.is_available():
+        raise RuntimeError(f'{component} requires a CUDA GPU (it uses NCCL and CUDA kernels); '
+                           'no CUDA device is available on this machine')
+
+
 def initialize_global_process_group(timeout_second=36000):
+    require_cuda('initialize_global_process_group')
     import torch.distributed
     from datetime import timedelta
     torch.distributed.init_process_group('nccl', timeout=timedelta(seconds=timeout_second))

@@ -348,7 +348,6 @@ class FSDPSFTTrainer(object):
             self.save_checkpoint(step=global_step)
 
 
-from verl.trainer.fsdp_sft_trainer import FSDPSFTTrainer
 import hydra
 
 from torch.distributed.device_mesh import init_device_mesh

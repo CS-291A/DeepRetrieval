@@ -33,7 +33,7 @@ __all__ = ['DataProto', 'union_tensor_dict']
 
 try:
     tensordict.set_lazy_legacy(False).set()
-except:
+except Exception:  # nsp: ignore NSP007 tensordict versions without the lazy-legacy switch need no configuration
     pass
 
 

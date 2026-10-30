@@ -41,7 +41,7 @@ class WorkerHelper:
         def get_node_ip_by_sdk():
             if os.getenv("WG_BACKEND", None) == "ray":
                 import ray
-                return ray._private.services.get_node_ip_address()
+                return ray.util.get_node_ip_address()
             elif os.getenv("WG_BACKEND", None) == "torch_rpc":
                 from verl.single_controller.torchrpc.k8s_client import get_ip_addr
                 return get_ip_addr()
@@ -68,9 +68,9 @@ class WorkerHelper:
 
 
 class WorkerMeta:
-    keys = [
+    keys = (
         "WORLD_SIZE", "RANK", "LOCAL_WORLD_SIZE", "LOCAL_RANK", "MASTER_ADDR", "MASTER_PORT", "CUDA_VISIBLE_DEVICES"
-    ]
+    )
 
     def __init__(self, store) -> None:
         self._store = store
@@ -86,7 +86,7 @@ class Worker(WorkerHelper):
         instance = super().__new__(cls)
 
         # note that here we use int to distinguish
-        disable_worker_init = int(os.environ.get('DISABLE_WORKER_INIT', 0))
+        disable_worker_init = int(os.environ.get('DISABLE_WORKER_INIT', '0'))
         if disable_worker_init:
             return instance
 

@@ -60,7 +60,7 @@ def evaluate_model(model, tokenizer, data_path, device, model_name, save_dir, ba
                 try:
                     # json.loads(generated_text)
                     generated_text = json.loads(generated_text)['query']
-                except:
+                except Exception:
                     generated_text = matches[0]
 
             idx = batch_start + i

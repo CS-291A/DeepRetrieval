@@ -6,31 +6,43 @@ import numpy as np
 #     return [target_score_dict.get(item, 0) for item in predicted_list]
 
 
+def _relevance(target, rel_scores=None):
+    """Map each relevant doc id to its relevance score (1 for every target when rel_scores is None)."""
+    targets = target if isinstance(target, list) else [target]
+    if rel_scores is None:
+        return {item: 1 for item in targets}
+    assert len(targets) == len(rel_scores)
+    return {item: rel_scores[i] for i, item in enumerate(targets)}
+
+
 def dcg_at_k(retrieved, target, k, rel_scores=None):
     """
     Compute DCG@k (Discounted Cumulative Gain).
-    Default target is an ordered list of relevant documents, from highest to lowest relevance.
+    Target is a relevant doc id or a list of them; rel_scores (same order as target) grades them.
+    A doc retrieved more than once only gains at its first occurrence; repeats keep their rank slot.
     """
-    retrieved = retrieved[:k]
-    if rel_scores is None:
-        gains = np.array(retrieved) == target
-    else:
-        assert len(target) == len(rel_scores)
-        rel_scores_dict = {item: rel_scores[i] for i, item in enumerate(target)}
-        gains = np.array([rel_scores_dict.get(doc, 0) for doc in retrieved])
+    relevance = _relevance(target, rel_scores)
+    seen = set()
+    gains = []
+    for doc in retrieved[:k]:
+        gains.append(0 if doc in seen else relevance.get(doc, 0))
+        seen.add(doc)
+    gains = np.array(gains, dtype=float)
     discounts = np.log2(np.arange(2, len(gains) + 2))
     return np.sum(gains / discounts)
 
 def ndcg_at_k(retrieved, target, k, rel_scores=None):
     """
-    Compute NDCG@k.
+    Compute NDCG@k. The ideal ranking puts the relevant docs in descending order of relevance.
     """
+    relevance = _relevance(target, rel_scores)
+    assert all(score >= 0 for score in relevance.values()), "relevance scores must be non-negative"
     dcg = dcg_at_k(retrieved, target, k, rel_scores)
-    if isinstance(target, list):
-        ideal_dcg = dcg_at_k(target, target, k, rel_scores)
-    else:
-        ideal_dcg = dcg_at_k([target], target, k, rel_scores)  # Ideal DCG: only the target at top
-    return dcg / ideal_dcg if ideal_dcg > 0 else 0.0
+    ideal_gains = np.array(sorted(relevance.values(), reverse=True)[:k], dtype=float)
+    ideal_dcg = np.sum(ideal_gains / np.log2(np.arange(2, len(ideal_gains) + 2)))
+    ndcg = dcg / ideal_dcg if ideal_dcg > 0 else 0.0
+    assert 0.0 <= ndcg <= 1.0 + 1e-9, f"NDCG {ndcg} outside [0, 1]"
+    return ndcg
 
 
 def dcg_at_k_rank(rank, k):

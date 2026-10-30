@@ -69,12 +69,12 @@ def extract_json_from_llm_output(text):
                 try:
                     print(f"Extracted JSON: {extracted_json}")
                     return json.loads(extracted_json)['query']
-                except:
+                except Exception:
                     print(f"Warning: No JSON structure found. Using the response itself as the query. {extracted_json}")
                     return extracted_json.split(": ")[1].strip()
             else:
                 raise ValueError('No JSON structure found.')
-        except:
+        except Exception:
             return text
         
 def run_index_search_bm25(search_query, topk=50):
@@ -161,7 +161,7 @@ def evaluate_model(data_path, model_name, dataset_name, batch_size=8, max_retrie
             elif 'claude35' in model_name:
                 return get_claude_response(llm="sonnet", prompt=prompt)
             elif 'claude3' in model_name:
-                return get_claude_response(llm="hiku", prompt=prompt)
+                return get_claude_response(llm="haiku", prompt=prompt)
         except Exception as e:
             if retry_count < max_retries:
                 # Exponential backoff: wait 2^retry_count seconds before retrying
@@ -239,7 +239,7 @@ def evaluate_model(data_path, model_name, dataset_name, batch_size=8, max_retrie
                 recall_at_50.append(1) if rank <= 50 else recall_at_50.append(0)
                 recall_at_100.append(1) if rank <= 100 else recall_at_100.append(0)
                 
-            except:
+            except Exception:
                 recall_at_1.append(0)
                 recall_at_5.append(0)
                 recall_at_10.append(0)
@@ -256,7 +256,7 @@ def evaluate_model(data_path, model_name, dataset_name, batch_size=8, max_retrie
             print(f"Current Recall@5: {sum(recall_at_5) / len(recall_at_5)}")
             print(f"Current Recall@20: {sum(recall_at_20) / len(recall_at_20)}")
             print(f"Current Recall@100: {sum(recall_at_100) / len(recall_at_100)}")
-        except:
+        except Exception:
             continue
 
     # Save generations
@@ -294,7 +294,7 @@ def check_if_processed(model_name, dataset_name):
                 json.load(f)
             # If both files exist and are valid, consider it processed
             return True
-        except:
+        except Exception:
             # If there's any error reading the files, consider it not processed
             return False
     return False
@@ -306,7 +306,7 @@ def load_existing_results():
         try:
             with open(summary_file, 'r') as f:
                 return json.load(f)
-        except:
+        except Exception:
             return {}
     return {}
 
@@ -345,7 +345,7 @@ def main():
                     metrics_content = f.read()
                 print(f"Existing metrics:\n{metrics_content}")
                 return dataset_name, model_name, None
-            except:
+            except Exception:
                 return dataset_name, model_name, None
         
         try:

@@ -95,8 +95,8 @@ def test_hf_value_models():
     for config in test_configs:
         # config = AutoConfig.from_pretrained(test_case)
         config.num_labels = 1
-        setattr(config, 'classifier_dropout', 0)
-        setattr(config, 'hidden_dropout', 0)
+        config.classifier_dropout = 0
+        config.hidden_dropout = 0
         with torch.device('cuda'):
             model = AutoModelForTokenClassification.from_config(config=config,
                                                                 torch_dtype=torch.bfloat16,

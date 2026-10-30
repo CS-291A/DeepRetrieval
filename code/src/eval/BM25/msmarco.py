@@ -54,7 +54,7 @@ def extract_solution(solution_str):
         processed_str = solution_str.split("<|im_start|>assistant", 1)[1].strip()
     else:
         print("[Error] Failed to locate model response header")
-        return None, processed_str
+        return None, solution_str
 
     # Regular expression to find the last occurrence of <answer>...</answer>
     answer_pattern = r'<answer>(.*?)</answer>'
@@ -117,6 +117,7 @@ def evaluate_model(model, tokenizer, data_path, device, model_name, save_dir, ba
                 ndcg_score = ndcg_at_k(searched_doc_list, target, 10, rel_scores=scores)
                 ndcg_scores.append(ndcg_score)
             except Exception as e:
+                ndcg_scores.append(0)  # a failed query scores 0, like the other eval scripts
                 error_count += 1
                 print(f"Error: {e}")
                 continue

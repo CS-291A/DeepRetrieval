@@ -80,7 +80,7 @@ class ClassWithInitArgs:
 
 def check_workers_alive(workers: List, is_alive: Callable, gap_time: float = 1) -> None:
     import time
-    while True:
+    while True:  # nsp: ignore NSP005 deliberate monitor loop for the driver's lifetime; runs in its own thread
         for worker in workers:
             if not is_alive(worker):
                 logging.warning(f"worker {worker} is not alive" + " sending signal to main thread")
@@ -110,13 +110,14 @@ class WorkerGroup:
     def _is_worker_alive(self, worker):
         raise NotImplementedError(f"WorkerGroup._is_worker_alive called, should be implemented in derived class.")
 
-    def _block_until_all_workers_alive(self) -> None:
-        while True:
+    def _block_until_all_workers_alive(self, max_wait_seconds: int = 1800) -> None:
+        # bounded: a worker that never comes up must fail the driver instead of hanging it forever
+        for _ in range(max_wait_seconds):
             all_state = [self._is_worker_alive(worker) for worker in self._workers]
-            if False in all_state:
-                time.sleep(1)
-            else:
-                break
+            if False not in all_state:
+                return
+            time.sleep(1)
+        raise TimeoutError(f'not all {len(self._workers)} workers became alive within {max_wait_seconds}s')
 
     def start_worker_aliveness_check(self, every_n_seconds=1) -> None:
         # before starting checking worker aliveness, make sure all workers are already alive
@@ -142,9 +143,11 @@ class WorkerGroup:
 
             try:
                 method = getattr(user_defined_cls, method_name)
-                assert callable(method), f"{method_name} in {user_defined_cls} is not callable"
-            except Exception as e:
-                # if it is a property, it will fail because Class doesn't have instance property
+            except AttributeError:  # nsp: ignore NSP007 instance-only attributes are not worker methods; skip them
+                # descriptors that only resolve on instances raise AttributeError on class access
+                continue
+            if not callable(method):
+                # properties and plain class attributes are not worker methods
                 continue
 
             if hasattr(method, MAGIC_ATTR):

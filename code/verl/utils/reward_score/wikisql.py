@@ -1,15 +1,18 @@
 import re
 import random
 import numpy as np
-import ast
-import operator
-import pdb
 import json
 import sys
 import os
 sys.path.append('./')
 
-from src.sql.wikisql import WikiSQLDatabaseSearcher
+try:
+    from src.sql.wikisql import WikiSQLDatabaseSearcher
+    _import_error = None
+except ModuleNotFoundError as e:
+    # src/sql/wikisql.py is not shipped with this repository; fail only when the reward is used.
+    WikiSQLDatabaseSearcher = None
+    _import_error = e
 
 
 
@@ -18,7 +21,11 @@ _searcher = None
 
 def get_searcher():
     global _searcher
-    _searcher = WikiSQLDatabaseSearcher()
+    if WikiSQLDatabaseSearcher is None:
+        raise ImportError("The wikisql reward needs src.sql.wikisql (WikiSQLDatabaseSearcher), "
+                          "which is not included in this repository.") from _import_error
+    if _searcher is None:
+        _searcher = WikiSQLDatabaseSearcher()
     return _searcher
     
 
@@ -38,7 +45,7 @@ def extract_solution(solution_str):
         processed_str = solution_str.split("<|im_start|>assistant", 1)[1].strip()
     else:
         print("[Error] Failed to locate model response header")
-        return None, processed_str
+        return None, ""
 
     # Regular expression to find the last occurrence of <answer>...</answer>
     answer_pattern = r'<answer>(.*?)</answer>'
@@ -112,7 +119,7 @@ def check_json_format(json_str, do_print=False):
         
         # Required keys
         required_keys = {"sql"}
-        if not all(key in data for key in required_keys):
+        if not isinstance(data, dict) or not all(key in data for key in required_keys):
             if do_print:
                 print("[Error] Missing required keys in JSON")
             return False
@@ -132,12 +139,20 @@ def execute_sql(sql_query, db_path, db_id):
     
 def calculate_answer_score(pred_sql, gold_sql, db_path, db_id, do_print=False):
     """Calculate answer score based on final_prediction idx."""
+    get_searcher()  # a missing backend must raise here, not be scored as a bad SQL query below
     try:
         pred_results = execute_sql(pred_sql, db_path, db_id)
         gold_results = execute_sql(gold_sql, db_path, db_id)
         
         # answer_score = 2 if set(pred_results) == set(gold_results) else 0.5
-        answer_score = 1 if set(pred_results) == set(gold_results) else 0
+        if gold_results is None:
+            # The reference query timing out is a data/infra problem, not a match for anything.
+            print(f"[Error] Gold SQL timed out on {db_path}: {gold_sql}")
+            answer_score = 0
+        else:
+            # A timed-out prediction (None) never matches.
+            matched = pred_results is not None and set(pred_results) == set(gold_results)
+            answer_score = 1 if matched else 0
         
     except Exception as e:
         if do_print:
