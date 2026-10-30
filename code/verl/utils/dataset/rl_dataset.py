@@ -89,7 +89,6 @@ class RLHFDataset(Dataset):
         self._read_files_and_tokenize()
 
     def _download(self):
-        from verl.utils.fs import copy_local_path_from_hdfs
         for i, parquet_file in enumerate(self.parquet_files):
             self.parquet_files[i] = copy_local_path_from_hdfs(src=parquet_file, cache_dir=self.cache_dir)
 

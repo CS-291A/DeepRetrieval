@@ -12,17 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
-
-os.environ['RAY_DEDUP_LOGS'] = '0'
-os.environ['NCCL_DEBUG'] = 'WARN'
-
+import pytest
 import torch
 import torch.distributed
 import ray
 
 from verl.single_controller.ray.base import RayResourcePool, RayClassWithInitArgs, RayWorkerGroup
 from verl.single_controller.base.worker import Worker
+
+
+@pytest.fixture(autouse=True)
+def _ray_env(monkeypatch):
+    # Set before ray.init so the driver and its workers inherit them.
+    monkeypatch.setenv('RAY_DEDUP_LOGS', '0')
+    monkeypatch.setenv('NCCL_DEBUG', 'WARN')
 
 
 @ray.remote

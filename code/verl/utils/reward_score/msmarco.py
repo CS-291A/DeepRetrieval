@@ -1,10 +1,8 @@
 import re
 import random
 import numpy as np
-import ast
-import operator
-import pdb
 import json
+import logging
 import sys
 import os
 sys.path.append('./')
@@ -47,7 +45,13 @@ def get_searcher(mode='sparse'):
         query_encoder_name = "facebook/contriever"
 
         if not os.path.exists(index_dir):
-            _searcher = FaissSearcher.from_prebuilt_index('msmarco-v1-passage.tct_colbert', None)
+            # The prebuilt index was encoded with TCT-ColBERT, so queries must use the matching encoder
+            # (pyserini's FaissSearcher crashes on a None encoder).
+            prebuilt_index = 'msmarco-v1-passage.tct_colbert'
+            _searcher = FaissSearcher.from_prebuilt_index(prebuilt_index, 'castorini/tct_colbert-msmarco')
+            if _searcher is None:
+                raise RuntimeError(f"Dense index {index_dir} not found and pyserini could not load the "
+                                   f"prebuilt index '{prebuilt_index}'")
         else:
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
             if 'contriever' in query_encoder_name:
@@ -67,7 +71,7 @@ def extract_solution(solution_str):
         processed_str = solution_str.split("<|im_start|>assistant", 1)[1].strip()
     else:
         print("[Error] Failed to locate model response header")
-        return None, processed_str
+        return None, ""
 
     # Regular expression to find the last occurrence of <answer>...</answer>
     answer_pattern = r'<answer>(.*?)</answer>'
@@ -145,7 +149,7 @@ def check_json_format(json_str, do_print=False):
             return False
 
         return True
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, TypeError):  # TypeError: `in` on a JSON number / null
         if do_print:
             print("[Error] JSON decoding failed")
         return False
@@ -153,6 +157,7 @@ def check_json_format(json_str, do_print=False):
 def retriver_items(query, top_k=3000, mode='sparse'):
     """Retrieve items from the search system."""
     searcher = get_searcher(mode=mode)
+    assert searcher is not None, f"no msmarco searcher for mode {mode!r}"
     hits = searcher.search(query, k=top_k)
     if mode == 'sparse':
         doc_list = [json.loads(hit.lucene_document.get('raw'))['id'] for hit in hits]
@@ -162,38 +167,45 @@ def retriver_items(query, top_k=3000, mode='sparse'):
     
 def calculate_answer_score(json_str, label, scores, top_k, test_k, mode='sparse', do_print=False):
     """Calculate answer score based on final_prediction idx."""
+    if len(label) == 0:
+        raise ValueError("msmarco reward got an empty label (no relevant passages)")
+    # Malformed model output scores -2.
     try:
-        data = json.loads(json_str)
-        query = data['query']
+        query = json.loads(json_str)['query']
+    except (json.JSONDecodeError, KeyError, TypeError):
+        if do_print:
+            print(f"[Error] Error in evaluation: malformed query in {json_str!r}")
+        return -2
+    
+    # Executing the model's query must never crash training: any failure is logged and scored
+    # -2, exactly as before. Misconfiguration was already rejected above.
+    try:
         targets = [str(l) for l in label]
         results = retriver_items(query, top_k=top_k, mode=mode)
         hit_count = len(set(results) & set(targets))
         recall = hit_count / len(targets)
-        
-        
+    
+    
         # if recall > 0:
         #     recall_score = 0.2
         # else:
         #     recall_score = 0
-        
+    
         ndcg_score = ndcg_at_k(results, targets, top_k, rel_scores=scores)
         # ndcg_test_score = ndcg_at_k(results, targets, test_k, rel_scores=scores)
-        
+    
         answer_score = ndcg_score
-        
-        
+    
+    
         if do_print:
             print(f"Retrieved results: {results}")
             print(f"Target: {label} ")
             print(f"NDCG score: {ndcg_score}")
             print(f"Recall: {recall}")
-            
-            
-    except Exception as e:
-        if do_print:
-            print(f"[Error] Error in evaluation: {e}")
-        answer_score = -2
-    
+    except Exception:
+        logging.getLogger(__name__).exception(f"Search/scoring failed for model query {str(query)[:200]!r}; scoring -2")
+        return -2
+
     return answer_score
 
 def compute_score(solution_str, ground_truth, data_source, format_reward=0.1, answer_reward=1.):
@@ -238,6 +250,8 @@ def compute_score(solution_str, ground_truth, data_source, format_reward=0.1, an
         mode = 'sparse'
     elif 'dense' in data_source:
         mode = 'dense'
+    else:
+        raise ValueError(f"msmarco data_source '{data_source}' must contain 'sparse' or 'dense' to pick a retriever")
     
     test_k = 10
     if format_correct and answer_text:

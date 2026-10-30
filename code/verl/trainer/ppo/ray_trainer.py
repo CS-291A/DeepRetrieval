@@ -34,6 +34,7 @@ from verl.single_controller.ray import RayResourcePool, RayWorkerGroup, RayClass
 from verl.single_controller.ray.base import create_colocated_worker_cls
 from verl.trainer.ppo import core_algos
 from verl.utils.seqlen_balancing import get_seqlen_balanced_partitions, log_seqlen_unbalance
+from verl.utils.torch_functional import scalars_to_floats
 
 WorkerType = Type[Worker]
 
@@ -256,6 +257,43 @@ def compute_data_metrics(batch, use_critic=True):
     }
     return metrics
 
+# Reward-table inversions shared by the training (compute_reward_metrics_*) and validation (_validate) metrics.
+# Keep them in sync with the step tables in verl/utils/reward_score/.
+
+# nq_serini / triviaqa / squad (+ *_no_reason): total reward = format 1 + answer score 5/4/2/1/0.5/0.1 for an
+# answer-span rank <= 5/20/50/100/1000/3000, so "hit within top-k" <=> reward >= the band value for k.
+# Misses and search errors are 1 - 2.5 .. 1 - 4 (all < 1.1); a bad format is -4 + 0.
+ANSWER_SPAN_HIT_MIN_REWARD = ((5, 6.0), (20, 5.0), (50, 3.0), (100, 2.0), (1000, 1.5), (3000, 1.1))
+ANSWER_SPAN_FORMAT_ERROR_REWARD = -4
+# BEIR / msmarco ndcg tasks: total reward = 0.1 + ndcg when ndcg > 0, else 0 (or -2 for a bad format).
+NDCG_FORMAT_REWARD = 0.1
+# bird / spider / wikisql: 0.1 + 1 for matching execution results; every other outcome is <= 0.1 + 0.3.
+SQL_ACCURATE_MIN_REWARD = 1.0
+
+
+def compute_answer_span_hit_ratios(reward_tensor: torch.Tensor) -> Dict[int, float]:
+    """Fraction of samples whose answer span is retrieved within the top-k, for each k of the reward table."""
+    if reward_tensor.dim() != 1 or reward_tensor.numel() == 0:
+        raise ValueError(f'expected a non-empty 1-D reward tensor, got shape {tuple(reward_tensor.shape)}')
+    ratios = [(reward_tensor >= min_reward).float().mean() for _, min_reward in ANSWER_SPAN_HIT_MIN_REWARD]
+    return dict(zip([k for k, _ in ANSWER_SPAN_HIT_MIN_REWARD], scalars_to_floats(ratios), strict=True))
+
+
+def compute_mean_ndcg(reward_tensor: torch.Tensor) -> float:
+    """Mean ndcg over all samples (samples without a positive ndcg count as 0)."""
+    if reward_tensor.dim() != 1 or reward_tensor.numel() == 0:
+        raise ValueError(f'expected a non-empty 1-D reward tensor, got shape {tuple(reward_tensor.shape)}')
+    positive = reward_tensor[reward_tensor > NDCG_FORMAT_REWARD]
+    return (torch.sum(positive - NDCG_FORMAT_REWARD).float() / reward_tensor.numel()).item()
+
+
+def compute_sql_accuracy(reward_tensor: torch.Tensor) -> float:
+    """Fraction of samples whose SQL execution results match the gold query."""
+    if reward_tensor.dim() != 1 or reward_tensor.numel() == 0:
+        raise ValueError(f'expected a non-empty 1-D reward tensor, got shape {tuple(reward_tensor.shape)}')
+    return (reward_tensor > SQL_ACCURATE_MIN_REWARD).float().mean().item()
+
+
 def compute_reward_metrics_search_engine(batch):
     reward_tensor = batch.batch['token_level_scores'].sum(-1)
 
@@ -295,30 +333,16 @@ def compute_reward_metrics_nq_serini(batch):
 
     reward_metrics = {}
     reward_metrics["reward/mean"] = torch.mean(reward_tensor).detach().item()
-    # Calculate all_correct ratio (value == 3)
-    five_recall = torch.sum(reward_tensor == 6).float() / reward_tensor.numel()
-    reward_metrics["reward/hit@5"] = five_recall.detach().item()
-    
-    twenty_recall = torch.sum(reward_tensor >= 5).float() / reward_tensor.numel()
-    reward_metrics["reward/hit@20"] = twenty_recall.detach().item()
-    
-    fifty_recall = torch.sum(reward_tensor >= 4).float() / reward_tensor.numel()
-    reward_metrics["reward/hit@50"] = fifty_recall.detach().item()
-    
-    hundred_recall = torch.sum(reward_tensor >= 2).float() / reward_tensor.numel()
-    reward_metrics["reward/hit@100"] = hundred_recall.detach().item()
-    
-    thousand_recall = torch.sum(reward_tensor >= 1.5).float() / reward_tensor.numel()
-    reward_metrics["reward/hit@1000"] = thousand_recall.detach().item()
-    
-    three_thousand_recall = torch.sum(reward_tensor >= 1.1).float() / reward_tensor.numel()
-    reward_metrics["reward/hit@3000"] = three_thousand_recall.detach().item()
+    for k, hit_ratio in compute_answer_span_hit_ratios(reward_tensor).items():
+        reward_metrics[f"reward/hit@{k}"] = hit_ratio
 
-    format_error = torch.sum(reward_tensor == -4).float() / reward_tensor.numel()
+    format_error = torch.sum(reward_tensor == ANSWER_SPAN_FORMAT_ERROR_REWARD).float() / reward_tensor.numel()
     reward_metrics["reward/format_error_ratio"] = format_error.detach().item()
 
-    format_error = torch.sum(reward_tensor <= -1.5).float() / reward_tensor.numel()
-    reward_metrics["reward/wrong_answer_ratio"] = format_error.detach().item()
+    # well-formatted answers that miss the top-3000 (or whose search failed)
+    lowest_hit_reward = ANSWER_SPAN_HIT_MIN_REWARD[-1][1]
+    wrong_answer = (reward_tensor > ANSWER_SPAN_FORMAT_ERROR_REWARD) & (reward_tensor < lowest_hit_reward)
+    reward_metrics["reward/wrong_answer_ratio"] = (torch.sum(wrong_answer).float() / reward_tensor.numel()).item()
 
     return reward_metrics
 
@@ -355,7 +379,7 @@ def compute_reward_metrics_recall_at_k(batch):
 def compute_reward_metrics_ndcg(batch):
     reward_tensor = batch.batch['token_level_scores'].sum(-1)
 
-    format_score = 0.1
+    format_score = NDCG_FORMAT_REWARD
 
     reward_metrics = {}
     reward_metrics["reward/mean"] = torch.mean(reward_tensor).detach().item()
@@ -370,16 +394,14 @@ def compute_reward_metrics_ndcg(batch):
     reward_metrics["reward/wrong_answer_ratio"] = all_wrong.detach().item()
     
     # avg value of reward > format_score
-    ndcg = (torch.sum(reward_tensor[reward_tensor > format_score] - format_score).float()) / reward_tensor.numel()
-    reward_metrics["reward/ndcg"] = ndcg
+    reward_metrics["reward/ndcg"] = compute_mean_ndcg(reward_tensor)
     
     return reward_metrics
 
 def compute_reward_metrics_recall_ndcg(batch):
     reward_tensor = batch.batch['token_level_scores'].sum(-1)
 
-    format_score = 0.1
-    recall_score = 0.2
+    format_score = NDCG_FORMAT_REWARD
 
     reward_metrics = {}
     reward_metrics["reward/mean"] = torch.mean(reward_tensor).detach().item()
@@ -393,9 +415,8 @@ def compute_reward_metrics_recall_ndcg(batch):
     all_wrong = torch.sum(reward_tensor == 0).float() / reward_tensor.numel()
     reward_metrics["reward/wrong_answer_ratio"] = all_wrong.detach().item()
     
-    # avg value of reward > format_score
-    ndcg = (torch.sum(reward_tensor[reward_tensor > format_score] - format_score - recall_score).float()) / reward_tensor.numel()
-    reward_metrics["reward/ndcg"] = ndcg
+    # msmarco's reward no longer adds a recall bonus: reward = format_score + ndcg
+    reward_metrics["reward/ndcg"] = compute_mean_ndcg(reward_tensor)
     
     return reward_metrics
 
@@ -404,10 +425,8 @@ def compute_reward_metrics_sql(batch):
     reward_tensor = batch.batch['token_level_scores'].sum(-1)
 
     wrong_format_score = -2
-    format_score = 0.1
     sql_syntax_score = 0.1
     execution_score = 0.5
-    accuracy_score = 1
 
     reward_metrics = {}
 
@@ -420,19 +439,18 @@ def compute_reward_metrics_sql(batch):
     # reward_metrics["reward/execution"] = execution.detach().item()
 
     # accuracy
-    accuracy = torch.sum(reward_tensor == format_score + accuracy_score).float() / reward_tensor.numel()
-    reward_metrics["reward/accuracy"] = accuracy.detach().item()
+    accuracy = compute_sql_accuracy(reward_tensor)
+    reward_metrics["reward/accuracy"] = accuracy
 
     # normal
     reward_metrics["reward/mean"] = torch.mean(reward_tensor).detach().item()
-    # Calculate all_correct ratio (value == 2.1)
-    all_correct = torch.sum(reward_tensor == accuracy_score + format_score).float() / reward_tensor.numel()
-    reward_metrics["reward/all_correct_ratio"] = all_correct.detach().item()
+    # Calculate all_correct ratio (value == 1.1)
+    reward_metrics["reward/all_correct_ratio"] = accuracy
     # Calculate format_error ratio (value == -2)
     format_error = torch.sum(reward_tensor < 0).float() / reward_tensor.numel()
     reward_metrics["reward/format_error_ratio"] = format_error.detach().item()
-    # Calculate wrong answer ratio (value == format_score)
-    all_wrong = torch.sum(reward_tensor == format_score).float() / reward_tensor.numel()
+    # Calculate wrong answer ratio: well formatted but not accurate (0, or 0.1 + 0.3 for bird)
+    all_wrong = torch.sum((reward_tensor >= 0) & (reward_tensor <= SQL_ACCURATE_MIN_REWARD)).float() / reward_tensor.numel()
     reward_metrics["reward/wrong_answer_ratio"] = all_wrong.detach().item()
     
 
@@ -660,11 +678,10 @@ class RayPPOTrainer(object):
         data_sources = np.concatenate(data_source_lst, axis=0)
         # evaluate test_score based on data source
         data_source_reward = {}
-        for i in range(reward_tensor.shape[0]):
-            data_source = data_sources[i]
+        for data_source, reward in zip(data_sources, reward_tensor.tolist(), strict=True):  # one device-to-host copy
             if data_source not in data_source_reward:
                 data_source_reward[data_source] = []
-            data_source_reward[data_source].append(reward_tensor[i].item())
+            data_source_reward[data_source].append(reward)
         
         metric_dict = {}
         for data_source, rewards in data_source_reward.items():
@@ -673,16 +690,10 @@ class RayPPOTrainer(object):
                 pass
             elif 'scifact' in data_source or 'fiqa' in data_source or 'nfcorpus' in data_source or 'hotpotqa' in data_source \
                     or 'fever' in data_source or 'msmarco_beir' in data_source:
-                format_score = 0.1
-                count_ndcg = sum(reward - format_score for reward in rewards if reward > format_score)
-                total_count = len(rewards)
-                metric_dict[f'val/test_score/{data_source}'] = count_ndcg / total_count if total_count > 0 else 0
+                metric_dict[f'val/test_score/{data_source}'] = compute_mean_ndcg(torch.tensor(rewards))
                 
             elif 'msmarco' in data_source:
-                format_score = 0.1
-                count_ndcg = sum(reward - format_score for reward in rewards if reward > format_score)
-                total_count = len(rewards)
-                metric_dict[f'val/test_score/{data_source}'] = count_ndcg / total_count if total_count > 0 else 0
+                metric_dict[f'val/test_score/{data_source}'] = compute_mean_ndcg(torch.tensor(rewards))
                 # format_score = 0.1
                 # recall_score = 0.2
                 # count_ndcg = 0
@@ -692,41 +703,11 @@ class RayPPOTrainer(object):
                 # metric_dict[f'val/test_score/{data_source}'] = count_ndcg / total_count if total_count > 0 else 0
                 
             elif 'nq_serini' in data_source or 'squad' in data_source or 'triviaqa' in data_source:
-                count_hit_5 = 0
-                count_hit_20 = 0
-                count_hit_50 = 0
-                count_hit_100 = 0
-                for reward in rewards:
-                    if reward == 6:
-                        count_hit_5 += 1
-                        count_hit_20 += 1
-                        count_hit_50 += 1
-                        count_hit_100 += 1
-                    elif reward == 5:
-                        count_hit_20 += 1
-                        count_hit_50 += 1
-                        count_hit_100 += 1
-                    elif reward == 3:
-                        count_hit_50 += 1
-                        count_hit_100 += 1
-                    elif reward == 2:
-                        count_hit_100 += 1
-                
-                metric_dict[f'val/recall@5'] = count_hit_5 / len(rewards)
-                metric_dict[f'val/recall@20'] = count_hit_20 / len(rewards)
-                metric_dict[f'val/recall@50'] = count_hit_50 / len(rewards)
-                metric_dict[f'val/recall@100'] = count_hit_100 / len(rewards)
+                for k, hit_ratio in compute_answer_span_hit_ratios(torch.tensor(rewards)).items():
+                    metric_dict[f'val/recall@{k}/{data_source}'] = hit_ratio
             
             elif 'bird' in data_source or 'spider' in data_source or 'wikisql' in data_source:
-                count_acc = 0
-                format_score = 0.1
-                accuracy_score = 1
-                for reward in rewards:
-                    # loss of significance -> 1.09999? 
-                    if reward > accuracy_score:
-                        count_acc += 1
-                total_count = len(rewards)
-                metric_dict[f'val/test_score/{data_source}'] = count_acc / total_count if total_count > 0 else 0
+                metric_dict[f'val/test_score/{data_source}'] = compute_sql_accuracy(torch.tensor(rewards))
 
             else:
                 count_equal_3 = sum(1 for reward in rewards if reward == 3)

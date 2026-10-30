@@ -49,6 +49,9 @@ def test_rl_dataset():
             non_tensors[key] = val
 
     data_proto = DataProto.from_dict(tensors=tensors, non_tensors=non_tensors)
+    assert len(data_proto) == 16
+    # prompts are left-padded to max_prompt_length
+    assert data_proto.batch['input_ids'].shape == (16, 256)
 
     data = dataset[0]['input_ids']
     output = tokenizer.batch_decode([data])[0]

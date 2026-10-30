@@ -31,11 +31,11 @@ if __name__ == '__main__':
     inputs = [item[0]['content'] for item in df['prompt'].tolist()]
     try:
         targets = df['target'].tolist()
-    except:
+    except Exception:
         targets = df['label'].tolist()
     try:
         qids = df['qid'].tolist()
-    except:
+    except Exception:
         qids = list(range(len(df)))
 
     # if targets[i] is a array, then convert to list

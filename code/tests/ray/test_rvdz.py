@@ -28,7 +28,7 @@ class TestWorker:
         from verl.utils.rendezvous.ray_backend import create_nccl_communicator_in_ray
         self.communicator = create_nccl_communicator_in_ray(self.rank, self.world_size, self.group_name)
 
-    def test(self):
+    def test(self):  # audit: ignore[NO_ASSERT] actor method, not a test
         if self.communicator is None:
             return None
         return self.communicator.rank_id()

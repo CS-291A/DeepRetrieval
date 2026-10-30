@@ -1,0 +1,104 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "verl"
+dynamic = ["version"]
+description = "veRL: Volcano Engine Reinforcement Learning for LLM (DeepRetrieval fork)"
+license = { text = "Apache 2.0" }
+authors = [{ name = "Bytedance - Seed - MLSys", email = "zhangchi.usc1992@bytedance.com" }]
+# vllm 0.6.3 publishes wheels for 3.8-3.12.
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "accelerate",
+    "codetiming",
+    "datasets",
+    "dill",
+    "huggingface_hub",
+    "hydra-core",
+    # vllm 0.6.3, outlines 0.0.46 and pyhealth require numpy<2 (see README "Dependency Conflicts").
+    "numpy<2",
+    "pandas",
+    "pybind11",
+    "ray",
+    "requests",
+    "tensordict<0.6",
+    # vllm 0.6.3 pins torch==2.4.0.
+    "torch==2.4.0",
+    "transformers<4.48",
+    "wandb",
+]
+
+[project.optional-dependencies]
+# CUDA-only: rollout (vllm) and fused attention (flash-attn). Not installable on macOS.
+gpu = [
+    "vllm==0.6.3; sys_platform == 'linux'",
+    "flash-attn==2.6.3; sys_platform == 'linux'",
+]
+# Sparse/dense retrieval (BM25, DPR) and SQL execution rewards.
+retrieval = [
+    "pyserini==0.22.1",
+    "faiss-gpu==1.7.2; sys_platform == 'linux'",
+    "faiss-cpu; sys_platform != 'linux'",
+    "func_timeout",
+    "install-jdk",
+]
+# GPT/Claude baselines (src/eval/**/baselines, src/utils/*) and the SQL cold-start SFT (src/cold_start).
+baselines = [
+    "openai",
+    "anthropic",
+    "boto3",
+    "langchain-core",
+    "langchain-openai",
+    "langchain-anthropic",
+    "langchain-community",
+    "trl",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pyright",
+    "ruff",
+]
+
+[project.urls]
+Homepage = "https://github.com/pat-jj/DeepRetrieval"
+
+[tool.setuptools.dynamic]
+version = { file = "verl/version/version" }
+
+[tool.setuptools.packages.find]
+where = ["."]
+# `utils` is imported as `utils.java_init` by verl/trainer/main_ppo.py; `tests` by the e2e trainers.
+include = ["verl*", "utils*", "tests*"]
+
+[tool.setuptools.package-data]
+verl = ["version/*", "trainer/config/*.yaml"]
+
+[tool.uv]
+extra-build-dependencies = { flash-attn = [{ requirement = "torch", match-runtime = true }] }
+
+# flash-attn ships only an sdist on PyPI; declare its metadata so `uv lock` need not build it on macOS.
+[[tool.uv.dependency-metadata]]
+name = "flash-attn"
+version = "2.6.3"
+requires-dist = ["torch", "einops"]
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu121", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cu121"
+url = "https://download.pytorch.org/whl/cu121"
+explicit = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--strict-markers"
+markers = [
+    "gpu: needs a CUDA device (auto-applied to tests/{ray,gpu_utility,model,rollout,e2e})",
+    "data: needs preprocessed datasets in ~/verl-data",
+    "network: downloads from the Hugging Face Hub or calls an external API",
+]

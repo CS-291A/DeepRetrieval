@@ -17,6 +17,7 @@ Note that we don't combine the main with ray_trainer as ray_trainer is used by o
 
 import sys
 import os
+import logging
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(os.path.dirname(current_dir))  
@@ -30,6 +31,11 @@ import torch
 from verl.trainer.ppo.ray_trainer import RayPPOTrainer
 from verl.utils.apis.pubmed import PubmedAPI
 from verl.utils.apis.ctgov import CTGovAPI
+
+logger = logging.getLogger(__name__)
+
+# README: put the NCBI key at code/verl/utils/reward_score/apis/pubmed_api.key (resolved here, not from the cwd)
+PUBMED_API_KEY_PATH = os.path.join(project_root, 'verl', 'utils', 'reward_score', 'apis', 'pubmed_api.key')
     
 def _select_rm_score_fn(data_source):
 
@@ -45,6 +51,9 @@ def _select_rm_score_fn(data_source):
     elif "ctgov" in data_source:
         from verl.utils.reward_score import ctgov
         return ctgov.compute_score
+    elif 'fiqa' in data_source:
+        from verl.utils.reward_score import fiqa
+        return fiqa.compute_score
     elif 'scifact' in data_source:
         if 'dense' in data_source:
             from verl.utils.reward_score_dense import scifact
@@ -122,7 +131,7 @@ def _select_rm_score_fn(data_source):
         from verl.utils.reward_score import wikisql
         return wikisql.compute_score
     else:
-        raise NotImplementedError
+        raise NotImplementedError(f"No reward function for data_source '{data_source}'")
 
 
 class RewardManager():
@@ -136,9 +145,14 @@ class RewardManager():
         # Initialize APIs globally
         self.pubmed_api = None
         self.ctgov_api = None
-        if os.path.exists('verl/utils/reward_score/apis/pubmed_api.key'):
-            api_key = open('verl/utils/reward_score/apis/pubmed_api.key', 'r').read().strip()
-            self.pubmed_api = PubmedAPI(api_key=api_key)
+        api_key = None
+        if os.path.exists(PUBMED_API_KEY_PATH):
+            with open(PUBMED_API_KEY_PATH, 'r') as f:
+                api_key = f.read().strip()
+        else:
+            logger.warning(f'PubMed API key not found at {PUBMED_API_KEY_PATH}; using keyless PubMed requests '
+                           '(NCBI allows 3 req/s without a key instead of 10).')
+        self.pubmed_api = PubmedAPI(api_key=api_key)
         self.ctgov_api = CTGovAPI()
         
     def __call__(self, data: DataProto):
@@ -174,7 +188,7 @@ class RewardManager():
             # select rm_score
             data_source = data_item.non_tensor_batch['data_source']
             
-            if 'pubmed' in data_source or 'ctgov' in data_source or 'pmd_no_reason' in data_source or 'trial_no_reason' in data_source:
+            if 'pubmed' in data_source or 'ctgov' in data_source or 'pmd_no_reason' in data_source:
                 pub_date = data_item.non_tensor_batch['pub_date']
                 literature_type = 'publication' if ('pubmed' in data_source or 'pmd_no_reason' in data_source) else 'trial'
                 if literature_type == 'publication':
@@ -186,7 +200,7 @@ class RewardManager():
             
             compute_score_fn = _select_rm_score_fn(data_source)
 
-            if 'pubmed' in data_source or 'ctgov' in data_source or 'pmd_no_reason' in data_source or 'trial_no_reason' in data_source:
+            if 'pubmed' in data_source or 'ctgov' in data_source or 'pmd_no_reason' in data_source:
                 score = compute_score_fn(solution_str=sequences_str, ground_truth=ground_truth, search_api=api, literature_type=literature_type, pub_date=pub_date)
             elif 'scifact' in data_source or 'fiqa' in data_source or 'nfcorpus' in data_source or 'hotpotqa' in data_source \
                     or 'fever' in data_source or 'msmarco' in data_source:
@@ -223,6 +237,13 @@ def main(config):
     if not ray.is_initialized():
         # this is for local ray cluster
         ray.init(runtime_env={'env_vars': {'TOKENIZERS_PARALLELISM': 'true', 'NCCL_DEBUG': 'WARN'}})
+
+    # GPU placement groups wait forever (no error) when the cluster cannot satisfy them.
+    requested_gpus = config.trainer.n_gpus_per_node * config.trainer.nnodes
+    available_gpus = ray.cluster_resources().get('GPU', 0)
+    if available_gpus < requested_gpus:
+        raise RuntimeError(f'trainer.n_gpus_per_node * trainer.nnodes requests {requested_gpus} GPUs '
+                           f'but the Ray cluster has {available_gpus:g}; fix the config or CUDA_VISIBLE_DEVICES.')
 
     ray.get(main_task.remote(config))
 

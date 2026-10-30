@@ -38,6 +38,12 @@ def is_vllm_available():
         return False
 
 
+def flash_attn_import_error(component: str) -> ImportError:
+    """Readable error for a missing flash-attn; raise it ``from`` the original ImportError."""
+    return ImportError(f'flash-attn is required for {component}; it is CUDA-only, '
+                       'install with `uv sync --extra gpu` on Linux')
+
+
 def import_external_libs(external_libs=None):
     if external_libs is None:
         return

@@ -340,8 +340,11 @@ def process_generations(dataset_name, model_name, generations_path, data_path):
             original_query = original_queries[idx]
             target = target_list[idx]
             
-            # Skip completely errored entries
+            # Completely errored entries score 0 in both metric sets
             if original_query == "error":
+                for metric_dict in [results["original_metrics"], results["cleaned_metrics"]]:
+                    for k in metric_dict:
+                        metric_dict[k].append(0)
                 continue
             
             # Initialize sample details
@@ -379,6 +382,9 @@ def process_generations(dataset_name, model_name, generations_path, data_path):
                     sample_info["has_injection"] = True
                     results["injection_stats"]["queries_with_injection"] += 1
                     results["injection_stats"]["answer_spans"].extend(target)
+                    # No cleaned query could be parsed: the cleaned query scores 0
+                    for k in results["cleaned_metrics"]:
+                        results["cleaned_metrics"][k].append(0)
                 else:
                     # If no injection, use same metrics as original
                     for k, v in original_metrics.items():
@@ -393,10 +399,11 @@ def process_generations(dataset_name, model_name, generations_path, data_path):
                 
         except Exception as e:
             print(f"Error processing query {idx}: {str(e)}")
-            # Add 0s for failed cases
+            # Add 0s for failed cases, unless this query was already scored before the failure
             for metric_dict in [results["original_metrics"], results["cleaned_metrics"]]:
                 for k in metric_dict:
-                    metric_dict[k].append(0)
+                    if len(metric_dict[k]) == idx:
+                        metric_dict[k].append(0)
             # Add error case to sample details
             results["sample_details"].append({
                 "index": idx,
@@ -407,6 +414,12 @@ def process_generations(dataset_name, model_name, generations_path, data_path):
                 "error": str(e)
             })
     
+    # Every query contributes exactly one score (0 on failure) to every metric
+    for metric_dict in [results["original_metrics"], results["cleaned_metrics"]]:
+        for k, v in metric_dict.items():
+            if len(v) != len(generations):
+                raise RuntimeError(f"{k}: {len(v)} scores for {len(generations)} queries")
+
     # Calculate average metrics
     final_results = {
         "dataset": dataset_name,

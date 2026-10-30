@@ -19,13 +19,17 @@ The input is a parquet file that contains N generated sequences and (optional) t
 
 import hydra
 from verl.utils.fs import copy_local_path_from_hdfs
-from verl.utils.reward_score import math, gsm8k
 import pandas as pd
 import numpy as np
 
 
 def select_reward_fn(data_source):
     if data_source == 'lighteval/MATH':
+        try:
+            from verl.utils.reward_score import math
+        except ImportError as e:
+            raise ImportError("main_eval needs verl.utils.reward_score.math (upstream verl), "
+                              "which this repository does not ship.") from e
         return math.compute_score
     else:
         raise NotImplementedError

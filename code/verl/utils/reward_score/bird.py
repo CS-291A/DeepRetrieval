@@ -1,9 +1,6 @@
 import re
 import random
 import numpy as np
-import ast
-import operator
-import pdb
 import json
 import sys
 import os
@@ -18,7 +15,8 @@ _searcher = None
 
 def get_searcher():
     global _searcher
-    _searcher = BirdDatabaseSearcher()
+    if _searcher is None:
+        _searcher = BirdDatabaseSearcher()
     return _searcher
     
 
@@ -38,7 +36,7 @@ def extract_solution(solution_str):
         processed_str = solution_str.split("<|im_start|>assistant", 1)[1].strip()
     else:
         print("[Error] Failed to locate model response header")
-        return None, processed_str
+        return None, ""
 
     # Regular expression to find the last occurrence of <answer>...</answer>
     answer_pattern = r'<answer>(.*?)</answer>'
@@ -112,7 +110,7 @@ def check_json_format(json_str, do_print=False):
         
         # Required keys
         required_keys = {"sql"}
-        if not all(key in data for key in required_keys):
+        if not isinstance(data, dict) or not all(key in data for key in required_keys):
             if do_print:
                 print("[Error] Missing required keys in JSON")
             return False
@@ -137,7 +135,14 @@ def calculate_answer_score(pred_sql, gold_sql, db_path, do_print=False):
         gold_results = execute_sql(gold_sql, db_path)
         
         # bird
-        answer_score = 1 if set(pred_results) == set(gold_results) else 0.3
+        if gold_results is None:
+            # The reference query timing out is a data/infra problem, not a match for anything.
+            print(f"[Error] Gold SQL timed out on {db_path}: {gold_sql}")
+            answer_score = 0
+        else:
+            # A timed-out prediction (None) never matches.
+            matched = pred_results is not None and set(pred_results) == set(gold_results)
+            answer_score = 1 if matched else 0.3
         # answer_score = 2 if set(pred_results) == set(gold_results) else 0.5
 
         # spider

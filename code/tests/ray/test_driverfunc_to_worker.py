@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
+import pytest
 import ray
 import torch
 from verl import DataProto
@@ -22,8 +22,13 @@ from verl.single_controller.base.worker import Worker
 from verl.single_controller.ray.base import RayResourcePool, RayClassWithInitArgs
 from verl.single_controller.ray import RayWorkerGroup
 
-os.environ['RAY_DEDUP_LOGS'] = '0'
-os.environ['NCCL_DEBUG'] = 'WARN'
+
+
+@pytest.fixture(autouse=True)
+def _ray_env(monkeypatch):
+    # Set before ray.init so the driver and its workers inherit them.
+    monkeypatch.setenv('RAY_DEDUP_LOGS', '0')
+    monkeypatch.setenv('NCCL_DEBUG', 'WARN')
 
 
 @ray.remote

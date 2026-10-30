@@ -24,11 +24,11 @@ def evaluate_model(model, tokenizer, data_path, device, model_name, save_dir, ba
     inputs = [item[0]['content'] for item in df['prompt'].tolist()]
     try:
         targets = df['target'].tolist()
-    except:
+    except Exception:
         targets = df['label'].tolist()
     try:
         qids = df['qid'].tolist()
-    except:
+    except Exception:
         qids = list(range(len(df)))
     
     # if targets[i] is a array, then convert to list
@@ -58,7 +58,7 @@ def evaluate_model(model, tokenizer, data_path, device, model_name, save_dir, ba
             # extract from \nAssistant:
             try:
                 generated_text = generated_text.split("\nAssistant:")[1]
-            except:
+            except Exception:
                 generated_text = generated_text.split("\nassistant:")[1]
             
             # findall <answer> </answer>
@@ -70,7 +70,7 @@ def evaluate_model(model, tokenizer, data_path, device, model_name, save_dir, ba
                 try:
                     # json.loads(generated_text)
                     generated_text = json.loads(generated_text)['query']
-                except:
+                except Exception:
                     generated_text = matches[0]
 
             idx = batch_start + i

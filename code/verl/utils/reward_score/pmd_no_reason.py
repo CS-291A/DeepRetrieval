@@ -1,9 +1,8 @@
 import re
 import random
-import ast
-import operator
 import os
 import json
+import logging
 import time
 from collections import deque
 from threading import Lock
@@ -21,7 +20,7 @@ def extract_solution(solution_str):
         processed_str = solution_str.split("<|im_start|>assistant", 1)[1].strip()
     else:
         print("[Error] Failed to locate model response header")
-        return None, processed_str
+        return None, ""
 
     # Regular expression to find the last occurrence of <answer>...</answer>
     answer_pattern = r'<answer>(.*?)</answer>'
@@ -137,19 +136,27 @@ def run_search_pubmed(search_query, search_api, pub_date):
     
 def calculate_answer_score(answer_text, label, do_print=False, search_api=None, literature_type='publication', pub_date=None):
     """Calculate answer score based on document recall."""
+    assert search_api is not None, "pmd_no_reason reward needs a search_api (RewardManager.pubmed_api)"
+    if len(label) == 0:
+        raise ValueError("pmd_no_reason reward got an empty label (no ground-truth ids)")
+    # Malformed model output scores -4.
     try:
-        data = json.loads(answer_text)
-        pred_query = data["query"]
-        
+        pred_query = json.loads(answer_text)["query"]
+    except (json.JSONDecodeError, KeyError, TypeError):
+        print("[Error] Error in evaluation")
+        return -4
+    
+    # Executing the model's query must never crash training: any failure is logged and scored
+    # -4, exactly as before. Misconfiguration was already rejected above.
+    try:
         searched_pmids = run_search_pubmed(pred_query, search_api, pub_date)
-
-            
+    
         hit_pmids = set(searched_pmids) & set(label)
         recall = len(hit_pmids) / len(label)
-        
+    
         if do_print:
             print(f"Recall: {recall}")
-        
+    
         if recall >= 0.7:
             answer_score = 5
         elif recall >= 0.5:
@@ -164,11 +171,10 @@ def calculate_answer_score(answer_text, label, do_print=False, search_api=None, 
             answer_score = 0.1
         else:
             answer_score = -3.5
+    except Exception:
+        logging.getLogger(__name__).exception(f"Search/scoring failed for model query {str(pred_query)[:200]!r}; scoring -4")
+        return -4
 
-    except:
-        print("[Error] Error in evaluation")
-        answer_score = -4
-    
     return answer_score
 
 def compute_score(solution_str, ground_truth, format_reward=1, answer_reward=1., search_api=None, literature_type='publication', pub_date=None):

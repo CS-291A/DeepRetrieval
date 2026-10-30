@@ -78,18 +78,15 @@ def test_tensor_dict_make_iterator():
     for data in data_iter_2:
         data_list_2.append(data)
 
-    for data1, data2 in zip(data_list_1, data_list_2):
-        assert isinstance(data1, DataProto)
-        assert isinstance(data2, DataProto)
-        result = torch.all(torch.eq(data1.batch['obs'], data2.batch['obs']))
-        if not result.item():
-            print(data1.batch['obs'])
-            print(data2.batch['obs'])
-            assert False
-        non_tensor_result = np.all(np.equal(data1.non_tensor_batch['labels'], data2.non_tensor_batch['labels']))
-        if not non_tensor_result.item():
-            print(data1.non_tensor_batch['labels'])
-            print(data2.non_tensor_batch['labels'])
+    # 100 rows / mini_batch_size 10 * 2 epochs
+    assert len(data_list_1) == len(data_list_2) == 20
+    assert all(isinstance(data, DataProto) for data in data_list_1 + data_list_2)
+    obs_1 = torch.stack([data.batch['obs'] for data in data_list_1])
+    obs_2 = torch.stack([data.batch['obs'] for data in data_list_2])
+    assert torch.equal(obs_1, obs_2)
+    labels_1 = np.stack([data.non_tensor_batch['labels'] for data in data_list_1])
+    labels_2 = np.stack([data.non_tensor_batch['labels'] for data in data_list_2])
+    assert np.array_equal(labels_1, labels_2)
 
 
 def test_reorder():

@@ -9,6 +9,7 @@ import xml.etree.ElementTree as ET
 PUBMED_BASE_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term="
 PUBMED_SUMMARY_BASE_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&id="
 PUBMED_EFETCH_BASE_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id="
+REQUEST_TIMEOUT = (5, 60)  # (connect, read) seconds; a timeout raises and goes through the retry loop
 
 
 class PubmedAPI:
@@ -34,24 +35,24 @@ class PubmedAPI:
 
         # Optimize retmax based on topk - no need to fetch large batches if topk is small
         # For unlimited retrieval or large topk values, use larger batch sizes
-        retstart = 0
-        
         if topk > 0 and topk <= 1000:
             retmax = topk  # If we need few results, just fetch them in one go
         else:
             retmax = 5000  # Higher value for better throughput, up to API limits
         
         original_query = query  # Save the original query without retmax/retstart parameters
-        pmid_list = []
 
         for i in range(self.retry + 1):
             if i > 0:
                 print(f"Retry {i} times")
                 time.sleep(self.request_delay * 2)  # Longer delay on retries
+            # Each attempt starts from scratch so a failed attempt leaves nothing behind
+            retstart = 0
+            pmid_list = []
             try:
                 # First get the count of results
                 count_query = original_query + f'&retmax=0'
-                response = requests.get(count_query)
+                response = requests.get(count_query, timeout=REQUEST_TIMEOUT)
                 
                 if response.status_code != 200:
                     raise ConnectionError(f"Pubmed connection error occurred - {response.text}")
@@ -75,7 +76,7 @@ class PubmedAPI:
                     current_retmax = min(retmax, count_to_fetch - len(pmid_list))
                     current_query = original_query + f'&retmax={current_retmax}&retstart={retstart}'
                     
-                    response = requests.get(current_query)
+                    response = requests.get(current_query, timeout=REQUEST_TIMEOUT)
                     time.sleep(self.request_delay)  # Small delay to avoid rate limiting
                     
                     if response.status_code != 200:
@@ -100,6 +101,7 @@ class PubmedAPI:
                 if topk <= 0:
                     pmid_list = list(dict.fromkeys(pmid_list))  # Remove duplicates while preserving order
                 
+                err_msg = ""  # this attempt succeeded; earlier failures no longer matter
                 break
             except Exception as e:
                 err_msg = traceback.format_exc()
@@ -142,7 +144,7 @@ class PubmedAPI:
                     if self.api_key:
                         summary_query += f"&api_key={self.api_key}"
                     
-                    response = requests.get(summary_query)
+                    response = requests.get(summary_query, timeout=REQUEST_TIMEOUT)
                     time.sleep(self.request_delay)  # Small delay to avoid rate limiting
 
                     if response.status_code != 200:
@@ -184,6 +186,7 @@ class PubmedAPI:
                 else:
                     papers = pd.DataFrame()
                 
+                err_msg = ""  # this attempt succeeded; earlier failures no longer matter
                 break
             except Exception as e:
                 err_msg = traceback.format_exc()
@@ -241,7 +244,7 @@ class PubmedAPI:
             if self.api_key:
                 query += "&api_key=" + self.api_key
 
-            response = requests.get(query)
+            response = requests.get(query, timeout=REQUEST_TIMEOUT)
             time.sleep(self.request_delay)  # Small delay to avoid rate limiting
             
             if response.status_code != 200:

@@ -44,7 +44,7 @@ def extract_solution(solution_str):
         processed_str = solution_str.split("<|im_start|>assistant", 1)[1].strip()
     else:
         print("[Error] Failed to locate model response header")
-        return None, processed_str
+        return None, solution_str
 
     # Regular expression to find the last occurrence of <answer>...</answer>
     answer_pattern = r'<answer>(.*?)</answer>'
@@ -156,7 +156,7 @@ def evaluate_model(model, tokenizer, data_path, device, model_name, save_dir, ba
                 
                 # print("Query: ", query)
                 print("Recall: ", recall)
-            except:
+            except Exception:
                 print("Error: ", generated_text)
                 recalls.append(0)
                 error_count += 1

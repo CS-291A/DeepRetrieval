@@ -24,7 +24,7 @@ for key, value in data.items():
             "generated_text": gen_query,
             "target": value["target"],
         }
-    except:
+    except Exception:
         answers[key] = {
             "generated_text": value["generated_text"],
             "target": value["target"],

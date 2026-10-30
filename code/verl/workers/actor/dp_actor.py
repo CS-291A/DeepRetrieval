@@ -31,7 +31,12 @@ from verl.utils.ulysses import ulysses_pad_and_slice_inputs, gather_outpus_and_u
 from verl.utils.seqlen_balancing import rearrange_micro_batches, get_reverse_idx
 import verl.utils.torch_functional as verl_F
 
-from flash_attn.bert_padding import pad_input, unpad_input, rearrange, index_first_axis
+from verl.utils.import_utils import flash_attn_import_error
+
+try:
+    from flash_attn.bert_padding import pad_input, unpad_input, rearrange, index_first_axis
+except ImportError as e:
+    raise flash_attn_import_error('DataParallelPPOActor') from e
 
 __all__ = ['DataParallelPPOActor']
 
@@ -264,19 +269,20 @@ class DataParallelPPOActor(BasePPOActor):
                                                 kl_penalty=self.config.kl_loss_type)
                     kl_loss = masked_mean(kld, response_mask)
 
-                    policy_loss = policy_loss - kl_loss * self.config.kl_loss_coef
-                    metrics['actor/kl_loss'] = kl_loss.detach().item()
+                    # KL to the reference policy is a penalty: it must increase the loss
+                    policy_loss = policy_loss + kl_loss * self.config.kl_loss_coef
                     metrics['actor/kl_coef'] = self.config.kl_loss_coef
 
                 loss = policy_loss / self.gradient_accumulation
                 loss.backward()
 
-                data = {
-                    'actor/entropy_loss': entropy_loss.detach().item(),
-                    'actor/pg_loss': pg_loss.detach().item(),
-                    'actor/pg_clipfrac': pg_clipfrac.detach().item(),
-                    'actor/ppo_kl': ppo_kl.detach().item(),
-                }
+                # one device-to-host sync for all per-micro-batch scalars
+                names = ['actor/entropy_loss', 'actor/pg_loss', 'actor/pg_clipfrac', 'actor/ppo_kl']
+                scalars = [entropy_loss, pg_loss, pg_clipfrac, ppo_kl]
+                if self.config.use_kl_loss:
+                    names.append('actor/kl_loss')
+                    scalars.append(kl_loss)
+                data = dict(zip(names, verl_F.scalars_to_floats(scalars), strict=True))
                 append_to_dict(metrics, data)
 
             grad_norm = self._optimizer_step()

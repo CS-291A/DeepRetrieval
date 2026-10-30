@@ -48,7 +48,7 @@ def extract_solution(solution_str):
         processed_str = solution_str.split("<|im_start|>assistant", 1)[1].strip()
     else:
         print("[Error] Failed to locate model response header")
-        return None, processed_str
+        return None, solution_str
 
     # Regular expression to find the last occurrence of <answer>...</answer>
     answer_pattern = r'<answer>(.*?)</answer>'
@@ -248,7 +248,7 @@ def evaluate_model(model, tokenizer, data_path, device, model_name, save_dir, ba
             print(f"Recall@5: {sum(recall_at_5) / len(recall_at_5)}")
             print(f"Recall@20: {sum(recall_at_20) / len(recall_at_20)}")
             print(f"Recall@100: {sum(recall_at_100) / len(recall_at_100)}")
-        except:
+        except Exception:
             continue
     
     with open(os.path.join(save_dir, f"{model_name}_generations.json"), 'w') as f:

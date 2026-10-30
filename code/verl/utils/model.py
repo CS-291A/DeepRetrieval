@@ -121,7 +121,7 @@ def get_model_size(model: nn.Module, scale='auto'):
     elif scale == '':
         pass
     else:
-        raise NotImplemented(f'Unknown scale {scale}')
+        raise NotImplementedError(f'Unknown scale {scale}')
 
     return n_params, scale
 

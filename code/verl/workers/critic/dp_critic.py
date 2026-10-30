@@ -27,11 +27,16 @@ from verl import DataProto
 from verl.trainer.ppo import core_algos
 from verl.workers.critic import BasePPOCritic
 from verl.utils.py_functional import append_to_dict
-from verl.utils.torch_functional import masked_mean
+from verl.utils.torch_functional import masked_mean, scalars_to_floats
 from verl.utils.ulysses import ulysses_pad_and_slice_inputs, gather_outpus_and_unpad
 from verl.utils.seqlen_balancing import rearrange_micro_batches, get_reverse_idx
 
-from flash_attn.bert_padding import pad_input, unpad_input, rearrange, index_first_axis
+from verl.utils.import_utils import flash_attn_import_error
+
+try:
+    from flash_attn.bert_padding import pad_input, unpad_input, rearrange, index_first_axis
+except ImportError as e:
+    raise flash_attn_import_error('DataParallelPPOCritic') from e
 
 __all__ = ['DataParallelPPOCritic']
 
@@ -190,10 +195,13 @@ class DataParallelPPOCritic(BasePPOCritic):
                 loss = vf_loss / self.gradient_accumulation
                 loss.backward()
 
+                # one device-to-host sync for all per-micro-batch scalars
+                vf_loss_value, vf_clipfrac_value, vpred_mean = scalars_to_floats(
+                    [vf_loss, vf_clipfrac, masked_mean(vpreds, eos_mask)])
                 data = {
-                    'critic/vf_loss': vf_loss.detach().item(),
-                    'critic/vf_clipfrac': vf_clipfrac.detach().item(),
-                    'critic/vpred_mean': masked_mean(vpreds, eos_mask).detach().item(),
+                    'critic/vf_loss': vf_loss_value,
+                    'critic/vf_clipfrac': vf_clipfrac_value,
+                    'critic/vpred_mean': vpred_mean,
                 }
 
                 append_to_dict(metrics, data)

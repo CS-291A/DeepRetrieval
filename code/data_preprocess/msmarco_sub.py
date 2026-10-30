@@ -103,15 +103,16 @@ if __name__ == '__main__':
     
     data_source = args.dataset
     
-    for retrieval_mode in ['sparse', 'dense']:
-        for domain in args.domains:
-            train_data, test_data, val_data = load_matching_dataset(domain)
+    for domain in args.domains:
+        # Load once per domain; both retrieval modes are built from the same raw data.
+        train_data, test_data, val_data = load_matching_dataset(domain)
+        for retrieval_mode in ['sparse', 'dense']:
 
             train_dataset = Dataset.from_list(train_data)
             test_dataset = Dataset.from_list(test_data)
             val_dataset = Dataset.from_list(val_data)
             
-            def make_map_fn(split):
+            def make_map_fn(split, retrieval_mode=retrieval_mode):
                 def process_fn(example, idx):
                     question = make_prefix(example, retrieval_mode)
                     solution = {

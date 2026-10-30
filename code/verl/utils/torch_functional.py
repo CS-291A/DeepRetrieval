@@ -24,6 +24,8 @@ import torch.nn.functional as F
 from tensordict import TensorDict
 from torch import nn
 
+from verl.utils.import_utils import flash_attn_import_error
+
 try:
     from flash_attn.ops.triton.cross_entropy import cross_entropy_loss
     FLAH_ATTN_CROSS_ENTROPY_LOSS_AVAILABLE = True
@@ -81,6 +83,21 @@ def logprobs_of_labels_v2(logits: torch.FloatTensor, labels):
     logprobs_labels = torch.gather(logits, dim=-1, index=labels.unsqueeze(-1))
     logprobs_labels = logprobs_labels - torch.logsumexp(logits, dim=-1, keepdim=True)
     return logprobs_labels.squeeze(-1)
+
+
+def scalars_to_floats(tensors) -> List[float]:
+    """Read 0-dim tensors as Python floats with a single device-to-host sync.
+
+    Each tensor is upcast to float64 before stacking, which is exact for bf16/fp16/fp32/fp64,
+    so the result is bit-identical to calling ``.item()`` on each tensor.
+    """
+    tensors = [t.detach() for t in tensors]
+    for t in tensors:
+        if t.dim() != 0:
+            raise ValueError(f'scalars_to_floats expects 0-dim tensors, got shape {tuple(t.shape)}')
+    if not tensors:
+        return []
+    return torch.stack([t.double() for t in tensors]).tolist()
 
 
 def clip_by_value(x, tensor_min, tensor_max):
@@ -308,7 +325,10 @@ def log_probs_from_logits_response_rmpad(input_ids, attention_mask, logits_rmpad
         logits_rmpad: [total_nnz, vocab_size]
         response_length: int
     """
-    from flash_attn.bert_padding import pad_input, unpad_input
+    try:
+        from flash_attn.bert_padding import pad_input, unpad_input
+    except ImportError as e:
+        raise flash_attn_import_error('log_probs_from_logits_response_rmpad') from e
 
     batch_size, seqlen = input_ids.shape
     input_ids_rmpad, indices, *_ = unpad_input(input_ids.unsqueeze(-1), attention_mask=attention_mask)
@@ -338,7 +358,10 @@ def log_probs_from_logits_all_rmpad(input_ids_rmpad, logits_rmpad, indices, batc
         seqlen: int
         response_length: int
     """
-    from flash_attn.bert_padding import pad_input
+    try:
+        from flash_attn.bert_padding import pad_input
+    except ImportError as e:
+        raise flash_attn_import_error('log_probs_from_logits_all_rmpad') from e
     input_ids_rmpad = input_ids_rmpad.transpose(0, 1)  # transpose back to [total_nnz, 1]
     input_ids_rmpad = input_ids_rmpad.squeeze(-1)
     input_ids_rmpad_rolled = torch.roll(input_ids_rmpad, shifts=-1, dims=0)

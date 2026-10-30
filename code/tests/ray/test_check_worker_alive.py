@@ -15,6 +15,7 @@
 import time
 import os
 import subprocess
+from pathlib import Path
 
 
 def test():
@@ -23,7 +24,7 @@ def test():
     my_env = os.environ.copy()
     my_env["WAIT_TIME"] = str(wait_time)
 
-    p = subprocess.Popen(["python3", "-u", "./check_worker_alive/main.py"], env=my_env, stdout=subprocess.PIPE)
+    p = subprocess.Popen(["python3", "-u", str(Path(__file__).parent / "check_worker_alive" / "main.py")], env=my_env, stdout=subprocess.PIPE)
 
     count = 0
     while b"foo started" not in p.stdout.read():

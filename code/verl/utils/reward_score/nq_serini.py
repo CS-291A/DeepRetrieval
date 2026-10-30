@@ -2,9 +2,10 @@ import re
 import random
 import os
 import json
+import logging
 try:
-    import utils.java_init
-except:
+    import utils.java_init  # noqa: F401  (imported for its side effect: sets JAVA_HOME)
+except ImportError:
     print("Failed to import java_init")
     pass
 
@@ -34,7 +35,7 @@ def extract_solution(solution_str):
         processed_str = solution_str.split("<|im_start|>assistant", 1)[1].strip()
     else:
         print("[Error] Failed to locate model response header")
-        return None, processed_str
+        return None, ""
 
     # Regular expression to find the last occurrence of <answer>...</answer>
     answer_pattern = r'<answer>(.*?)</answer>'
@@ -134,30 +135,39 @@ def run_index_search_bm25(search_query, topk=50):
     # Rate limit checking
     hits = searcher.search(search_query, k=topk)
     
-    doc_list = [json.loads(hit.lucene_document.get('raw'))['contents'] for hit in hits]
+    # Parse lazily: the caller stops at the first hit that contains an answer.
+    doc_list = (json.loads(hit.lucene_document.get('raw'))['contents'] for hit in hits)
     
     return doc_list
     
 def calculate_answer_score_scale(answer_text, label, do_print=False):
     """Calculate answer score based on answer span rank."""
+    assert isinstance(label, list), f"label must be a list of answer strings, got {type(label).__name__}"
+    if len(label) == 0:
+        raise ValueError("nq_serini reward got an empty label (no answer strings)")
+    # Malformed model output scores -4.
     try:
-        data = json.loads(answer_text)
-        pred_query = data["query"]
-        
+        pred_query = json.loads(answer_text)["query"]
+    except (json.JSONDecodeError, KeyError, TypeError):
+        print("[Error] Error in evaluation: malformed query")
+        return -4
+    
+    # Executing the model's query must never crash training: any failure is logged and scored
+    # -4, exactly as before. Misconfiguration was already rejected above.
+    try:
         doc_list = run_index_search_bm25(pred_query, topk=3000)
-        
+    
         rank = 3001
 
         # Only need to check up to rank 100 since that's the last meaningful score threshold
-        for i in range(len(doc_list)):
-            assert isinstance(label, list)
-            if has_answers(doc_list[i], label, _tokenizer, regex=False):
+        for i, doc in enumerate(doc_list):
+            if has_answers(doc, label, _tokenizer, regex=False):
                 rank = i + 1
                 break
-            
+        
         if do_print:
             print(f"Rank: {rank}")
-        
+    
         if rank <= 5:
             answer_score = 5
         elif rank <= 20:
@@ -172,11 +182,10 @@ def calculate_answer_score_scale(answer_text, label, do_print=False):
             answer_score = 0.1
         else:
             answer_score = -3.5
+    except Exception:
+        logging.getLogger(__name__).exception(f"Search/scoring failed for model query {str(pred_query)[:200]!r}; scoring -4")
+        return -4
 
-    except Exception as e:
-        print(f"[Error] Error in evaluation: {e}")
-        answer_score = -4
-    
     return answer_score
 
 

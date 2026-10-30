@@ -6,6 +6,10 @@ import pandas as pd
 
 CTGOV_BASE_URL = "https://clinicaltrials.gov/api/v2/studies?query.term="
 CTGOV_NCTID_BASE_URL = "https://clinicaltrials.gov/api/v2/studies?&query.id="
+REQUEST_TIMEOUT = (5, 60)  # (connect, read) seconds; a timeout raises and goes through the retry loop
+# Upper bound on pages per paging loop. The whole registry (~600k studies) is ~600 pages of 1000,
+# so hitting this means the API keeps returning nextPageToken without converging.
+MAX_PAGES = 1000
 
 
 class CTGovAPI:
@@ -23,7 +27,6 @@ class CTGovAPI:
     def search_with_query(self, query, topk=-1):
         """Search with query input to get the response of nctids. Optimized for speed."""
         err_msg = ""
-        nctid_list = []
 
         # Ensure we have a reasonable page size
         if "pageSize=" not in query:
@@ -38,19 +41,23 @@ class CTGovAPI:
                 print(f"Retry {attempt} times")
                 time.sleep(self.request_delay * 2)  # Longer delay on retries
             
+            # Each attempt starts from scratch so a failed attempt leaves no duplicate ids behind
+            nctid_list = []
             try:
                 # Use iteration instead of recursion for better control and less overhead
                 next_page_token = None
                 page_num = 1
                 
                 while True:
+                    if page_num > MAX_PAGES:
+                        raise RuntimeError(f"CTGov search returned more than {MAX_PAGES} pages")
                     # Construct query for current page
                     current_query = query
                     if next_page_token:
                         current_query += f"&pageToken={next_page_token}"
                     
                     # Execute request
-                    response = requests.get(current_query)
+                    response = requests.get(current_query, timeout=REQUEST_TIMEOUT)
                     time.sleep(self.request_delay)  # Small delay to avoid rate limiting
                     
                     if response.status_code != 200:
@@ -90,15 +97,17 @@ class CTGovAPI:
                     page_num += 1
                 
                 # Success - break retry loop
+                err_msg = ""
                 break
                 
             except Exception as e:
                 err_msg = traceback.format_exc()
+                last_error = e
                 print(f"Error in CTGov API search: {e}")
                 print(err_msg)
 
-        if err_msg != "" and not nctid_list:
-            raise RuntimeError("A CTGOV API error occurred")
+        if err_msg != "":
+            raise RuntimeError(f"A CTGOV API error occurred: {last_error}")
 
         return nctid_list
 
@@ -137,12 +146,14 @@ class CTGovAPI:
                     next_page_token = None
                     batch_trials = []
                     
-                    while True:
+                    for page_num in range(MAX_PAGES + 1):
+                        if page_num == MAX_PAGES:
+                            raise RuntimeError(f"CTGov trial lookup returned more than {MAX_PAGES} pages")
                         current_query = query
                         if next_page_token:
                             current_query += f"&pageToken={next_page_token}"
                         
-                        response = requests.get(current_query)
+                        response = requests.get(current_query, timeout=REQUEST_TIMEOUT)
                         time.sleep(self.request_delay)  # Small delay to avoid rate limiting
                         
                         if response.status_code != 200:
@@ -188,10 +199,11 @@ class CTGovAPI:
                 
             except Exception as e:
                 err_msg = traceback.format_exc()
+                last_error = e
                 print(f"Error in get_trials_by_nctids: {e}")
                 print(err_msg)
 
         if err_msg != "" and trials is None:
-            raise RuntimeError("A CTGOV API error occurred")
+            raise RuntimeError(f"A CTGOV API error occurred: {last_error}")
 
         return trials

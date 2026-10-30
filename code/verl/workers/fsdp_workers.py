@@ -29,11 +29,12 @@ from verl.single_controller.base import Worker
 from verl.single_controller.base.decorator import register, Dispatch
 from verl.utils import hf_tokenizer
 from verl.utils.debug import log_gpu_memory_usage
+from verl.utils.distributed import require_cuda
 from verl.utils.fs import copy_local_path_from_hdfs
 from verl.utils.fsdp_utils import get_fsdp_wrap_policy, offload_fsdp_grad, init_fn, get_init_weight_context_manager
 from verl.utils.fsdp_utils import offload_fsdp_optimizer, offload_fsdp_param_and_grad, load_fsdp_optimizer, \
     load_fsdp_param_and_grad
-from verl.utils.import_utils import import_external_libs
+from verl.utils.import_utils import import_external_libs, flash_attn_import_error
 from verl.utils.model import compute_position_id_with_mask
 from verl.utils.flops_counter import FlopsCounter
 from verl.workers.sharding_manager.fsdp_ulysses import FSDPUlyssesShardingManager
@@ -51,6 +52,7 @@ class ActorRolloutRefWorker(Worker):
     """
 
     def __init__(self, config: DictConfig, role: str):
+        require_cuda('ActorRolloutRefWorker')
         super().__init__()
         self.config = config
         import torch.distributed
@@ -507,6 +509,7 @@ class ActorRolloutRefWorker(Worker):
 class CriticWorker(Worker):
 
     def __init__(self, config):
+        require_cuda('CriticWorker')
         super().__init__()
         import torch.distributed
         if not torch.distributed.is_initialized():
@@ -768,6 +771,7 @@ class RewardModelWorker(Worker):
     """
 
     def __init__(self, config):
+        require_cuda('RewardModelWorker')
         super().__init__()
         import torch.distributed
         if not torch.distributed.is_initialized():
@@ -855,7 +859,10 @@ class RewardModelWorker(Worker):
         torch.cuda.empty_cache()
 
     def _forward_micro_batch(self, micro_batch):
-        from flash_attn.bert_padding import pad_input, unpad_input, index_first_axis, rearrange
+        try:
+            from flash_attn.bert_padding import pad_input, unpad_input, index_first_axis, rearrange
+        except ImportError as e:
+            raise flash_attn_import_error('RewardModelWorker') from e
         from verl.utils.ulysses import ulysses_pad_and_slice_inputs, gather_outpus_and_unpad
 
         with torch.no_grad(), torch.autocast(device_type='cuda', dtype=torch.bfloat16):

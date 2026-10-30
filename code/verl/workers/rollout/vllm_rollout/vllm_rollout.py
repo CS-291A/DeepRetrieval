@@ -54,6 +54,17 @@ def _pre_process_inputs(pad_token_id, prompt_token_ids: torch.Tensor) -> List[in
     return token_ids
 
 
+def _pre_process_inputs_batch(pad_token_id, prompt_token_ids: torch.Tensor) -> List[List[int]]:
+    """_pre_process_inputs for a whole (bs, prompt_length) batch with a single device-to-host copy."""
+    token_ids = prompt_token_ids.cpu()
+    non_pad = token_ids != pad_token_id
+    if not bool(non_pad.any(dim=1).all()):
+        raise ValueError('every prompt must contain at least one non-pad token')
+    # argmax returns the first maximal index, i.e. the first non-pad position of each row
+    first_non_pad = non_pad.int().argmax(dim=1).tolist()
+    return [row[start:] for row, start in zip(token_ids.tolist(), first_non_pad, strict=True)]
+
+
 class vLLMRollout(BaseRollout):
 
     def __init__(self, actor_module: nn.Module, config: DictConfig, tokenizer, model_hf_config, **kwargs):
@@ -154,10 +165,8 @@ class vLLMRollout(BaseRollout):
 
         batch_size = idx.size(0)
 
-        idx_list = []
         # parse idx from torch.Tensor to List[List[str]]
-        for i in range(batch_size):
-            idx_list.append(_pre_process_inputs(self.pad_token_id, idx[i]))
+        idx_list = _pre_process_inputs_batch(self.pad_token_id, idx)
 
         do_sample = prompts.meta_info.get('do_sample', True)
         if not do_sample:

@@ -4,7 +4,7 @@ import os
 import json
 try:
     import utils.java_init
-except:
+except ImportError:
     print("Failed to import java_init")
     pass
 
@@ -80,7 +80,7 @@ def main():
             print(f"Recall@5: {sum(recall_at_5) / len(recall_at_5)}")
             print(f"Recall@20: {sum(recall_at_20) / len(recall_at_20)}")
             print(f"Recall@100: {sum(recall_at_100) / len(recall_at_100)}")
-        except:
+        except Exception:
             continue
         
 
