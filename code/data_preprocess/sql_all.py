@@ -1,8 +1,8 @@
 # generate bird and spider sql data first
-import pandas as pd
-import random
 import os
+import random
 
+import pandas as pd
 
 datasets = ['bird', 'spider']
 splits = ['train', 'test']

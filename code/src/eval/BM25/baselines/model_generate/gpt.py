@@ -1,18 +1,17 @@
-import pandas as pd
-import os
 import argparse
-from tqdm import tqdm
-import sys
 import json
+import os
+import sys
+
 import numpy as np
+import pandas as pd
+from tqdm import tqdm
 
 tqdm.pandas()
 
 sys.path.append('./')
 
 from src.utils.gpt_azure import gpt_chat_4o, gpt_chat_4omini, gpt_chat_35_msg
-
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

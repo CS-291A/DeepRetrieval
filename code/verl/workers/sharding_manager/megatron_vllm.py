@@ -17,13 +17,12 @@ This file contains a Megatron style Hybrid Engine that shares the weights of the
 
 import torch
 import torch.distributed as dist
-
-from torch import nn
-
-from megatron.core import parallel_state as mpu
 from megatron.core import DistributedDataParallel as LocalDDP
+from megatron.core import parallel_state as mpu
 from megatron.core.transformer.module import Float16Module
+from torch import nn
 from torch.nn.parallel.distributed import DistributedDataParallel as torchDDP
+
 from verl.utils.megatron_utils import get_model, unwrap_model
 from verl.utils.memory_buffer import (
     build_memory_buffer,
@@ -217,17 +216,18 @@ Megatron Hybrid Engine:
 - After inference, all the parameters that doesn't belong to this pp rank is freed.
 """
 
-from .base import BaseShardingManager
-
 import torch.distributed
 from torch.distributed import new_group
 
-from verl import DataProto
-from verl.utils.torch_functional import (broadcast_dict_tensor, allgather_dict_tensors)
 import verl.utils.megatron.tensor_parallel as tp_utils
-from verl.third_party.vllm import parallel_state as vllm_ps
+from verl import DataProto
 from verl.third_party.vllm import LLM
+from verl.third_party.vllm import parallel_state as vllm_ps
 from verl.utils.model import normalize_pp_vpp_params
+from verl.utils.torch_functional import allgather_dict_tensors, broadcast_dict_tensor
+
+from .base import BaseShardingManager
+
 # Micro Data parallel group. Micro data parallel group is additional dp group that origins from splitting training tp
 # into infer_tp and micro_tp. By default, we use order micro_dp - tp
 _MICRO_DATA_PARALLEL_GROUP = None

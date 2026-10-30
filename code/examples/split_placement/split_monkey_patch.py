@@ -16,9 +16,16 @@ An naive implementation of split placment example
 """
 import os
 from pprint import pprint
-from verl import DataProto
-from verl.trainer.ppo.ray_trainer import compute_advantage, apply_kl_penalty, reduce_metrics, compute_data_metrics
+
 from codetiming import Timer
+
+from verl import DataProto
+from verl.trainer.ppo.ray_trainer import (
+    apply_kl_penalty,
+    compute_advantage,
+    compute_data_metrics,
+    reduce_metrics,
+)
 
 
 def fit(self):
@@ -27,8 +34,9 @@ def fit(self):
     The driver process only need to call the compute functions of the worker group through RPC to construct the PPO dataflow.
     The light-weight advantage computation is done on the driver process.
     """
-    from verl.utils.tracking import Tracking
     from omegaconf import OmegaConf
+
+    from verl.utils.tracking import Tracking
 
     logger = Tracking(project_name=self.config.trainer.project_name,
                       experiment_name=self.config.trainer.experiment_name,
@@ -84,6 +92,7 @@ def fit(self):
 
                 # we combine with rule-based rm
                 reward_tensor = self.reward_fn(batch)
+                assert batch.batch is not None, 'the training batch carries the rollout tensors'
                 batch.batch['token_level_scores'] = reward_tensor
 
                 # compute rewards. apply_kl_penalty if available

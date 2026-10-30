@@ -14,30 +14,46 @@
 """
 Generate responses given a dataset of prompts
 """
-import ray
-import numpy as np
-import hydra
 import os
+from typing import Protocol, cast
+
+import hydra
+import numpy as np
+import ray
 
 os.environ['NCCL_DEBUG'] = 'WARN'
 os.environ['TOKENIZERS_PARALLELISM'] = 'true'
 # os.environ['TORCH_COMPILE_DISABLE'] = '1'
 
-from verl.utils.model import compute_position_id_with_mask
-
 import pandas as pd
 
-
 from verl import DataProto
+from verl.single_controller.ray import (
+    RayClassWithInitArgs,
+    RayResourcePool,
+    RayWorkerGroup,
+)
 from verl.utils.fs import copy_local_path_from_hdfs
-from verl.workers.fsdp_workers import ActorRolloutRefWorker
 from verl.utils.hdfs_io import makedirs
-from verl.single_controller.ray import RayClassWithInitArgs, RayResourcePool, RayWorkerGroup
+from verl.utils.model import compute_position_id_with_mask
+from verl.workers.fsdp_workers import ActorRolloutRefWorker
+
+
+class RolloutWorkerGroup(Protocol):
+    """The ActorRolloutRefWorker methods that RayWorkerGroup binds onto itself at runtime."""
+
+    @property
+    def world_size(self) -> int: ...
+
+    def init_model(self) -> None: ...
+
+    def generate_sequences(self, prompts: DataProto) -> DataProto: ...
 
 
 @hydra.main(config_path='config', config_name='generation', version_base=None)
 def main(config):
     from pprint import pprint
+
     from omegaconf import OmegaConf
     pprint(OmegaConf.to_container(config, resolve=True))  # resolve=True will eval symbol values
     OmegaConf.resolve(config)
@@ -60,7 +76,7 @@ def main(config):
 
     ray_cls_with_init = RayClassWithInitArgs(cls=ray.remote(ActorRolloutRefWorker), config=config, role='rollout')
     resource_pool = RayResourcePool(process_on_nodes=[config.trainer.n_gpus_per_node] * config.trainer.nnodes)
-    wg = RayWorkerGroup(resource_pool=resource_pool, ray_cls_with_init=ray_cls_with_init)
+    wg = cast(RolloutWorkerGroup, RayWorkerGroup(resource_pool=resource_pool, ray_cls_with_init=ray_cls_with_init))
     wg.init_model()
 
     total_samples = len(dataset)
@@ -69,6 +85,7 @@ def main(config):
     dp_size = wg.world_size // config.rollout.tensor_model_parallel_size
     num_batch = (total_samples // config_batch_size) + 1
     output_lst = [[] for _ in range(config.data.n_samples)]
+    output_text: list[str] = []  # last batch's decoded text, returned; stays empty if no batch is generated
 
     for batch_idx in range(num_batch):
         print(f'[{batch_idx+1}/{num_batch}] Start to process.')
@@ -88,6 +105,7 @@ def main(config):
         batch_dict = {'input_ids': input_ids, 'attention_mask': attention_mask, 'position_ids': position_ids}
 
         data = DataProto.from_dict(batch_dict)
+        assert data.batch is not None, 'from_dict always builds a TensorDict'
         real_batch_size = data.batch['input_ids'].shape[0]
         if real_batch_size % dp_size != 0:
             dummy_data_size = dp_size - real_batch_size % dp_size
@@ -97,6 +115,7 @@ def main(config):
                 f'dp_size {dp_size} is not divisible by real_batch_size {real_batch_size}, add {dummy_data_size} dummy data'
             )
 
+        assert data.batch is not None, 'concat of tensor DataProtos keeps the tensor batch'
         batch_size = data.batch['input_ids'].shape[0]
         assert batch_size % dp_size == 0, f'batch_size {batch_size} is not divisible by dp_size {dp_size}'
 
@@ -106,6 +125,7 @@ def main(config):
             output = wg.generate_sequences(data)
             # remove dummy data
             output = output[:real_batch_size]
+            assert output.batch is not None, 'generate_sequences returns the generated token tensors'
             output_text = tokenizer.batch_decode(output.batch['input_ids'][:, -config.rollout.response_length:],
                                                  skip_special_tokens=False)
 

@@ -12,14 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from verl.utils.model import create_random_mask
-from flash_attn.bert_padding import unpad_input  # pyright: ignore[reportMissingImports]  # flash_attn is Linux/CUDA-only (gpu extra)
 import torch
-from torch.optim.adam import Adam  # torch 2.4 optim has no __all__, so pyright treats torch.optim.Adam as private
+from flash_attn.bert_padding import unpad_input  # pyright: ignore[reportMissingImports]  # flash_attn is Linux/CUDA-only (gpu extra)
+from torch.optim.adam import (
+    Adam,  # torch 2.4 optim has no __all__, so pyright treats torch.optim.Adam as private
+)
+
+from verl.utils.model import create_random_mask
 
 
 def test_log_probs_from_logits_response_rmpad():
-    from verl.utils.torch_functional import log_probs_from_logits_response, log_probs_from_logits_response_rmpad
+    from verl.utils.torch_functional import (
+        log_probs_from_logits_response,
+        log_probs_from_logits_response_rmpad,
+    )
     vocab_size = 32000
     batch_size = 2
     prompt_length = 256

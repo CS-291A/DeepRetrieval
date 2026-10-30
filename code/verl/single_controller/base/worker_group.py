@@ -15,13 +15,18 @@
 the class of WorkerGroup
 """
 import logging
-import threading
 import signal
+import threading
 import time
-from typing import Any
 from collections.abc import Callable
+from typing import Any
 
-from verl.single_controller.base.decorator import MAGIC_ATTR, Dispatch, get_predefined_dispatch_fn, get_predefined_execute_fn
+from verl.single_controller.base.decorator import (
+    MAGIC_ATTR,
+    Dispatch,
+    get_predefined_dispatch_fn,
+    get_predefined_execute_fn,
+)
 
 
 class ResourcePool:

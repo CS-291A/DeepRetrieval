@@ -17,13 +17,12 @@ from typing import Any
 import pytest
 import ray
 import torch
-from verl import DataProto
 from tensordict import TensorDict
 
+from verl import DataProto
 from verl.single_controller.base.worker import Worker
-from verl.single_controller.ray.base import RayResourcePool, RayClassWithInitArgs
 from verl.single_controller.ray import RayWorkerGroup
-
+from verl.single_controller.ray.base import RayClassWithInitArgs, RayResourcePool
 
 
 @pytest.fixture(autouse=True)
@@ -83,6 +82,8 @@ def test():
     hs = HackSelf()
     ret_proto2 = get_aux_metrics(hs, test_proto)
 
+    assert ret_proto1.batch is not None
+    assert ret_proto2.batch is not None
     torch.testing.assert_close(ret_proto1.batch["decode_count"], ret_proto2.batch["decode_count"])
 
     ray.shutdown()

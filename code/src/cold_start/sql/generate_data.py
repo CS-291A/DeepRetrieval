@@ -1,13 +1,12 @@
-import os
-import json
-import pandas as pd
-from tqdm import tqdm
 import concurrent.futures
+import json
+import os
 import traceback
 
+import pandas as pd
+from tqdm import tqdm
+
 from src.utils.gpt_azure import gpt_chat_4o
-
-
 
 dataset = 'bird'
 # dataset = 'spider'

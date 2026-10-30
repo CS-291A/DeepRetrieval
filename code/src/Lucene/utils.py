@@ -1,6 +1,5 @@
 import numpy as np
 
-
 # def get_predicted_ranking(predicted_list, target_list, true_scores):
 #     target_score_dict = {item: score for item, score in zip(target_list, true_scores)}
 #     return [target_score_dict.get(item, 0) for item in predicted_list]

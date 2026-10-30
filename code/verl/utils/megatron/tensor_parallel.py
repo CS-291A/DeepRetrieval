@@ -16,10 +16,11 @@
 Utilities for using tensor_parallel in megatron
 """
 import torch
-from torch.nn import init
 import torch.distributed as dist
-from megatron.core import ModelParallelConfig
-from megatron.core import parallel_state as mpu, tensor_parallel
+from megatron.core import ModelParallelConfig, tensor_parallel
+from megatron.core import parallel_state as mpu
+from torch.nn import init
+
 import verl.utils.torch_functional as verl_F
 
 

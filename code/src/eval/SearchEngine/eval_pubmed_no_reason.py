@@ -1,5 +1,5 @@
-import sys
 import os
+import sys
 
 # Debug: Print current directory and Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -9,18 +9,19 @@ sys.path.insert(0, project_root)  # This will now add Panacea-R1 to the path
 
 
 import argparse
-import pandas as pd
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from tqdm import tqdm
 import json
 import re
+import time
 from collections import deque
 from threading import Lock
-import time
 
-from verl.utils.apis.pubmed import PubmedAPI
+import pandas as pd
+import torch
+from tqdm import tqdm
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
 from verl.utils.apis.ctgov import CTGovAPI
+from verl.utils.apis.pubmed import PubmedAPI
 
 # Add these at the top with other global variables
 _request_times = deque(maxlen=20)  # Track last 20 requests

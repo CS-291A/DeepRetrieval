@@ -25,24 +25,28 @@ os.environ['TOKENIZERS_PARALLELISM'] = 'true'
 
 import logging
 import re
+
 import torch
 import torch.distributed
-from torch import nn, optim
-from torch.distributed.fsdp import FullyShardedDataParallel as FSDP, MixedPrecision, ShardingStrategy, CPUOffload
-from transformers import AutoModelForCausalLM, PreTrainedModel, AutoConfig
-from verl.utils.torch_functional import get_cosine_schedule_with_warmup
 from tensordict import TensorDict
-from torch.utils.data import DataLoader, DistributedSampler
-
-from verl.utils.fsdp_utils import get_fsdp_wrap_policy, init_fn, get_init_weight_context_manager
-from verl.utils.dataset import SFTDataset
-from verl.utils.fs import copy_local_path_from_hdfs
-from verl.utils.tracking import Tracking
-
+from torch import nn, optim
 from torch.distributed.device_mesh import DeviceMesh
+from torch.distributed.fsdp import CPUOffload, MixedPrecision, ShardingStrategy
+from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+from torch.utils.data import DataLoader, DistributedSampler
+from transformers import AutoConfig, AutoModelForCausalLM, PreTrainedModel
 
 from verl.utils import hdfs_io
+from verl.utils.dataset import SFTDataset
 from verl.utils.debug import log_gpu_memory_usage
+from verl.utils.fs import copy_local_path_from_hdfs
+from verl.utils.fsdp_utils import (
+    get_fsdp_wrap_policy,
+    get_init_weight_context_manager,
+    init_fn,
+)
+from verl.utils.torch_functional import get_cosine_schedule_with_warmup
+from verl.utils.tracking import Tracking
 
 logger = logging.getLogger(__file__)
 logger.setLevel(os.getenv('VERL_SFT_LOGGING_LEVEL', 'WARN'))
@@ -350,7 +354,6 @@ class FSDPSFTTrainer:
 
 
 import hydra
-
 from torch.distributed.device_mesh import init_device_mesh
 
 from verl.utils.distributed import initialize_global_process_group

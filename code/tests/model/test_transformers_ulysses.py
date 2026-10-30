@@ -12,24 +12,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import torch
 import copy
+
+import torch
 import torch.distributed
+from flash_attn.bert_padding import index_first_axis, rearrange, unpad_input  # pyright: ignore[reportMissingImports]  # flash_attn is Linux/CUDA-only (gpu extra)
 from torch.distributed.device_mesh import init_device_mesh
-from verl.utils.distributed import initialize_global_process_group
-from verl.utils.model import create_random_mask, compute_position_id_with_mask
-from verl.utils.ulysses import ulysses_pad_and_slice_inputs, gather_outpus_and_unpad
-from verl.utils.ulysses import get_ulysses_sequence_parallel_world_size, set_ulysses_sequence_parallel_group
-from verl.workers.sharding_manager import FSDPUlyssesShardingManager
+from transformers import AutoModelForCausalLM, LlamaConfig, Qwen2Config
+from transformers.models.llama.modeling_llama import LlamaFlashAttention2
+from transformers.models.qwen2.modeling_qwen2 import Qwen2FlashAttention2
+
 from verl.models.transformers.llama import llama_flash_attn_forward
 from verl.models.transformers.qwen2 import qwen2_flash_attn_forward
 from verl.protocol import DataProto
-from flash_attn.bert_padding import unpad_input, index_first_axis, rearrange  # pyright: ignore[reportMissingImports]  # flash_attn is Linux/CUDA-only (gpu extra)
+from verl.utils.distributed import initialize_global_process_group
+from verl.utils.model import compute_position_id_with_mask, create_random_mask
+from verl.utils.ulysses import (
+    gather_outpus_and_unpad,
+    get_ulysses_sequence_parallel_world_size,
+    set_ulysses_sequence_parallel_group,
+    ulysses_pad_and_slice_inputs,
+)
+from verl.workers.sharding_manager import FSDPUlyssesShardingManager
 
-from transformers import LlamaConfig, Qwen2Config
-from transformers.models.llama.modeling_llama import LlamaFlashAttention2
-from transformers.models.qwen2.modeling_qwen2 import Qwen2FlashAttention2
-from transformers import AutoModelForCausalLM
 # TODO(sgm): add more models for test
 # we only need one scale for each model
 test_configs = {
@@ -90,6 +95,7 @@ def test_hf_casual_fwd():
         # 1. perform ulysses forward
         with sharding_manager:
             model_inputs = sharding_manager.preprocess_data(model_inputs)
+            assert model_inputs.batch is not None
             input_ids = model_inputs.batch['input_ids']
             attention_mask = model_inputs.batch['attention_mask']
             position_ids = model_inputs.batch['position_ids']
@@ -168,6 +174,7 @@ def test_hf_casual_fwd_bwd():
         # 1. perform ulysses forward
         with sharding_manager:
             model_inputs = sharding_manager.preprocess_data(model_inputs)
+            assert model_inputs.batch is not None
             input_ids = model_inputs.batch['input_ids']
             attention_mask = model_inputs.batch['attention_mask']
             position_ids = model_inputs.batch['position_ids']

@@ -1,11 +1,10 @@
-import os
-from datasets import Dataset, concatenate_datasets
-from typing import Any, cast
-from collections.abc import Iterable
 import argparse
 import json
+import os
+from collections.abc import Iterable
+from typing import Any, cast
 
-
+from datasets import Dataset, concatenate_datasets
 
 INSTRUCTION = """
 You are an expert in generating queries for dense retrieval. Given a scientific claim, your task is to retain the original query while expanding it with additional semantically relevant information. If no useful expansion is needed, return the original query as is."""

@@ -12,9 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
+
 import torch
 import torch.distributed as dist
-import logging
 
 
 def log_gpu_memory_usage(head: str, logger: logging.Logger | None = None, level=logging.DEBUG, rank: int = 0):

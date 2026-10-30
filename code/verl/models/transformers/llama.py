@@ -13,13 +13,16 @@
 # limitations under the License.
 
 import torch
-
-
-from transformers.models.llama.modeling_llama import apply_rotary_pos_emb
 from transformers.cache_utils import Cache
-from transformers.utils import logging
 from transformers.modeling_flash_attention_utils import _flash_attention_forward
-from verl.utils.ulysses import gather_heads_scatter_seq, gather_seq_scatter_heads, get_ulysses_sequence_parallel_world_size
+from transformers.models.llama.modeling_llama import apply_rotary_pos_emb
+from transformers.utils import logging
+
+from verl.utils.ulysses import (
+    gather_heads_scatter_seq,
+    gather_seq_scatter_heads,
+    get_ulysses_sequence_parallel_world_size,
+)
 
 logger = logging.get_logger(__name__)
 

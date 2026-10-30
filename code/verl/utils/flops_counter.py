@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import torch
-from transformers import PretrainedConfig, Qwen2Config, LlamaConfig
+from transformers import LlamaConfig, PretrainedConfig, Qwen2Config
 
 VALID_CONFIG_TYPE = (Qwen2Config, LlamaConfig)
 

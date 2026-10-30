@@ -15,6 +15,7 @@
 Using FSDPTrainer
 """
 import os
+
 import hydra
 import ray
 import torch
@@ -29,10 +30,12 @@ def make_reward_function(tokenizer, num_examine):
 
     def arithmetic_sequence_reward_function(data: DataProto):
         from tests.e2e.envs.digit_completion.task import compute_reward
+        assert data.batch is not None, 'reward input is the rollout batch'
         reward_tensor = torch.zeros_like(data.batch['responses'], dtype=torch.float32)
 
         for i in range(data.batch.batch_size[0]):
             data_item = data[i]  # DataProtoItem
+            assert data_item.batch is not None, 'DataProto.__getitem__ always slices the tensor batch'
 
             prompt_ids = data_item.batch['prompts']
 
@@ -95,6 +98,7 @@ def main(config):
 
     # print initial config
     from pprint import pprint
+
     from omegaconf import OmegaConf
     pprint(OmegaConf.to_container(config, resolve=True))  # resolve=True will eval symbol values
 
@@ -119,8 +123,8 @@ def main(config):
     print(f'Tokenizer vocab_size: {tokenizer.vocab_size}')
 
     # define worker classes
-    from verl.workers.fsdp_workers import ActorRolloutRefWorker, CriticWorker
     from verl.trainer.ppo.ray_trainer import ResourcePoolManager, Role
+    from verl.workers.fsdp_workers import ActorRolloutRefWorker, CriticWorker
 
     role_worker_mapping = {
         Role.ActorRollout: ray.remote(ActorRolloutRefWorker),

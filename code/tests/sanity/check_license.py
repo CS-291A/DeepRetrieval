@@ -14,8 +14,8 @@
 
 license_head = "Copyright 2024 Bytedance Ltd. and/or its affiliates"
 
-from pathlib import Path
 from argparse import ArgumentParser
+from pathlib import Path
 
 if __name__ == '__main__':
     parser = ArgumentParser()

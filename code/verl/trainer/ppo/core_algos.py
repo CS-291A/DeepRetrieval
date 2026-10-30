@@ -18,9 +18,10 @@ The function implemented in this file should be used by trainer with different d
 implement PPO
 """
 
+from collections import defaultdict
+
 import numpy as np
 import torch
-from collections import defaultdict
 
 import verl.utils.torch_functional as verl_F
 

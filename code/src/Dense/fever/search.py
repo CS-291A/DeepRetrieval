@@ -1,8 +1,9 @@
+import pdb
+import time
 from typing import cast
 
-from pyserini.search.faiss import FaissSearcher, DenseSearchResult
-import time
-import pdb
+from pyserini.search.faiss import DenseSearchResult, FaissSearcher
+
 
 class PyseriniFaissSearcher:
     def __init__(self, index_dir, model_name):

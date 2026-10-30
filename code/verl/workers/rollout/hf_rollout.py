@@ -17,17 +17,18 @@ TODO: refactor this class. Currently, it will hang when using FSDP HybridShard. 
 Then, get full state_dict and bind the state_dict to the single GPU model. Then, use the single GPU model to perform generation.
 """
 import contextlib
+
 import torch
 import torch.distributed
 from tensordict import TensorDict
 from torch import nn
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+from transformers import GenerationConfig
 
 from verl import DataProto
 from verl.utils.torch_functional import get_eos_mask
-from .base import BaseRollout
 
-from transformers import GenerationConfig
+from .base import BaseRollout
 
 __all__ = ['HFRollout']
 
@@ -40,6 +41,7 @@ class HFRollout(BaseRollout):
         self.module = module
 
     def generate_sequences(self, prompts: DataProto) -> DataProto:
+        assert prompts.batch is not None, 'rollout prompts carry input_ids/attention_mask/position_ids'
         batch_size = prompts.batch.batch_size[0]
         num_chunks = max(batch_size // self.config.get('micro_batch_size', batch_size), 1)
         batch_prompts = prompts.chunk(chunks=num_chunks)
@@ -49,6 +51,7 @@ class HFRollout(BaseRollout):
 
     @torch.no_grad()
     def _generate_minibatch(self, prompts: DataProto) -> DataProto:
+        assert prompts.batch is not None, 'rollout prompts carry input_ids/attention_mask/position_ids'
         idx = prompts.batch['input_ids']  # (bs, prompt_length)
         attention_mask = prompts.batch['attention_mask']  # left-padded attention_mask
         position_ids = prompts.batch['position_ids']

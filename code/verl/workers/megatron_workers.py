@@ -15,38 +15,42 @@
 The main entry point to run the PPO algorithm
 """
 
-import os
 import logging
+import os
+
 import torch
 import torch.distributed
-from torch import nn
+from megatron.core import ModelParallelConfig
+from megatron.core import parallel_state as mpu
 from omegaconf import DictConfig
+from torch import nn
+
+from verl import DataProto
+from verl.single_controller.base.decorator import Dispatch, register
 from verl.single_controller.base.megatron.worker import MegatronWorker
+from verl.utils import hf_tokenizer
+from verl.utils.debug import log_gpu_memory_usage
+from verl.utils.fs import copy_local_path_from_hdfs
+from verl.utils.megatron_utils import (
+    init_model_parallel_config,
+    load_megatron_param_and_grad,
+    offload_megatron_param_and_grad,
+)
+from verl.utils.model import load_megatron_model_weights
 from verl.workers.actor.megatron_actor import MegatronPPOActor
 from verl.workers.critic.megatron_critic import MegatronPPOCritic
-from verl.workers.sharding_manager import AllGatherPPModel
 from verl.workers.reward_model.megatron.reward_model import MegatronRewardModel
-
-from verl.single_controller.base.decorator import register, Dispatch
-from verl import DataProto
-from verl.utils.fs import copy_local_path_from_hdfs
-from verl.utils.debug import log_gpu_memory_usage
-from verl.utils.model import load_megatron_model_weights
-from verl.utils.megatron_utils import init_model_parallel_config
-from verl.utils.megatron_utils import offload_megatron_param_and_grad, load_megatron_param_and_grad
-from verl.utils import hf_tokenizer
-
-from megatron.core import parallel_state as mpu
-from megatron.core import ModelParallelConfig
+from verl.workers.sharding_manager import AllGatherPPModel
 
 logger = logging.getLogger(__file__)
 logger.setLevel(os.getenv('VERL_PPO_LOGGING_LEVEL', 'WARN'))
 
 
 def set_random_seed(seed):
-    import torch
-    import numpy as np
     import random
+
+    import numpy as np
+    import torch
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
@@ -126,11 +130,12 @@ class ActorRolloutRefWorker(MegatronWorker):
                                optim_config,
                                override_model_config,
                                enable_gradient_checkpointing=False):
-        from verl.utils.megatron.optimizer import get_megatron_optimizer
         from megatron.core.models.gpt.gpt_model import ModelType
-        from verl.utils.model import print_model_size, update_model_config
-        from verl.utils.megatron_utils import get_model, init_megatron_optim_config
         from transformers import AutoConfig
+
+        from verl.utils.megatron.optimizer import get_megatron_optimizer
+        from verl.utils.megatron_utils import get_model, init_megatron_optim_config
+        from verl.utils.model import print_model_size, update_model_config
 
         # Step 1: initialize the tokenizer
         local_path = copy_local_path_from_hdfs(model_path)
@@ -214,9 +219,9 @@ class ActorRolloutRefWorker(MegatronWorker):
 
     def _build_rollout(self):
         if self.config.rollout.name == 'vllm':
+            from verl.utils.model import normalize_pp_vpp_params
             from verl.workers.rollout.vllm_rollout import vLLMRollout
             from verl.workers.sharding_manager import MegatronVLLMShardingManager
-            from verl.utils.model import normalize_pp_vpp_params
 
             # NOTE(sgm): If the QKV and gate_up projection layer are concate together in actor,
             # we will reorganize their weight format when resharding from actor to rollout.
@@ -264,6 +269,7 @@ class ActorRolloutRefWorker(MegatronWorker):
             importlib.import_module(self.config.model.external_lib)
 
         from omegaconf import OmegaConf
+
         from verl.utils.torch_dtypes import PrecisionType
         override_model_config = OmegaConf.to_container(self.config.model.get('override_config', OmegaConf.create()))
         torch_dtype = torch.bfloat16
@@ -448,10 +454,11 @@ class CriticWorker(MegatronWorker):
                                       override_model_config,
                                       enable_gradient_checkpointing=False):
         from megatron.core.models.gpt.gpt_model import ModelType
-        from verl.utils.model import print_model_size, update_model_config
+        from transformers import AutoConfig
+
         from verl.utils.megatron.optimizer import get_megatron_optimizer
         from verl.utils.megatron_utils import get_model, init_megatron_optim_config
-        from transformers import AutoConfig
+        from verl.utils.model import print_model_size, update_model_config
 
         # Step 1: initialize the tokenizer
         local_path = copy_local_path_from_hdfs(model_path)
@@ -512,6 +519,7 @@ class CriticWorker(MegatronWorker):
     def init_model(self):
         # create critic
         from omegaconf import OmegaConf
+
         from verl.utils.torch_dtypes import PrecisionType
 
         if self.config.model.get('external_lib', None) is not None:
@@ -611,9 +619,10 @@ class RewardModelWorker(MegatronWorker):
 
     def _build_rm_model(self, model_path, megatron_config: ModelParallelConfig, override_model_config):
         from megatron.core.models.gpt.gpt_model import ModelType
-        from verl.utils.model import update_model_config
-        from verl.utils.megatron_utils import get_model
         from transformers import AutoConfig
+
+        from verl.utils.megatron_utils import get_model
+        from verl.utils.model import update_model_config
 
         # Step 1: initialize the tokenizer
         local_path = copy_local_path_from_hdfs(model_path)
@@ -670,6 +679,7 @@ class RewardModelWorker(MegatronWorker):
     def init_model(self):
         # create critic
         from omegaconf import OmegaConf
+
         from verl.utils.torch_dtypes import PrecisionType
 
         if self.config.model.get('external_lib', None) is not None:

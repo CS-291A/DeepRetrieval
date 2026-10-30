@@ -5,7 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from tests.deepretrieval.evals._loader import load_script, run_script_as_main, stub_modules
+from tests.deepretrieval.evals._loader import (
+    load_script,
+    run_script_as_main,
+    stub_modules,
+)
 
 PUBDATE = "data_preprocess/utils/pubdate.py"
 API_STUBS = ("verl.utils.apis.pubmed", "verl.utils.apis.ctgov")

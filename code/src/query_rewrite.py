@@ -1,8 +1,9 @@
-import requests
-import json
 import argparse
+import json
 import re
 import sys
+
+import requests
 
 # The model served by vllm_host.sh at the repository root.
 DEFAULT_MODEL = "DeepRetrieval/DeepRetrieval-NQ-BM25-3B"

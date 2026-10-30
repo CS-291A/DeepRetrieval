@@ -16,12 +16,12 @@ Utilities for DeepSpeed Ulysses Sequence Parallelism.
 DeepSpeed Ulysses Paper: https://arxiv.org/abs/2309.14509
 Inspired from: https://github.com/microsoft/DeepSpeed/blob/master/deepspeed/sequence/layer.py
 """
-from typing import Any, cast
 from collections.abc import Callable
+from typing import Any, cast
 
 import torch
-from torch import Tensor
 import torch.distributed as dist
+from torch import Tensor
 from torch.distributed import ProcessGroup
 
 _ULYSSES_SEQUENCE_PARALLEL_GROUP: ProcessGroup | None = None

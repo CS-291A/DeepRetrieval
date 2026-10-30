@@ -16,9 +16,8 @@ import logging
 import time
 from typing import cast
 
-from cupy.cuda.nccl import NcclCommunicator, get_unique_id  # pyright: ignore[reportMissingImports]  # cupy is CUDA-only, not in the lock
-
 import ray
+from cupy.cuda.nccl import NcclCommunicator, get_unique_id  # pyright: ignore[reportMissingImports]  # cupy is CUDA-only, not in the lock
 from ray.util import list_named_actors
 
 

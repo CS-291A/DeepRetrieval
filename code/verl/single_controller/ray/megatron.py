@@ -15,9 +15,13 @@
 
 import ray
 
-from .base import RayWorkerGroup, RayResourcePool, RayClassWithInitArgs
-from verl.single_controller.base.megatron.worker import DistRankInfo as DistRankInfo, DistGlobalInfo as DistGlobalInfo  # re-exported by verl.single_controller.ray
+from verl.single_controller.base.megatron.worker import DistGlobalInfo as DistGlobalInfo
+from verl.single_controller.base.megatron.worker import (  # re-exported by verl.single_controller.ray
+    DistRankInfo as DistRankInfo,
+)
 from verl.single_controller.base.megatron.worker_group import MegatronWorkerGroup
+
+from .base import RayClassWithInitArgs, RayResourcePool, RayWorkerGroup
 
 
 # NOTE(sgm): for opensource megatron-core

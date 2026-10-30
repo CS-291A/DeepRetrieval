@@ -20,7 +20,13 @@ import warnings
 import numpy as np
 import torch
 from torch import nn
-from transformers import AutoConfig, AutoModelForCausalLM, PretrainedConfig, MistralForSequenceClassification
+from transformers import (
+    AutoConfig,
+    AutoModelForCausalLM,
+    MistralForSequenceClassification,
+    PretrainedConfig,
+)
+
 from verl.models.registry import ModelRegistry
 
 

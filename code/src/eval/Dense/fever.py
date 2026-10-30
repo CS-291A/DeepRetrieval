@@ -1,11 +1,13 @@
 import json
-import sys
 import os
+import sys
+
 from tqdm import tqdm
+
 sys.path.append('./')
 
-from src.eval.BM25.utils import parse_qrel
 from src.Dense.fever.search import PyseriniFaissSearcher
+from src.eval.BM25.utils import parse_qrel
 from src.Lucene.utils import ndcg_at_k
 
 index_path = 'data/local_index_search/fever/dense_index/faiss-flat.beir-v1.0.0-fever.bge-base-en-v1.5.20240107'

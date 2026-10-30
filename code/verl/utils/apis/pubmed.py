@@ -1,10 +1,10 @@
 import json
-import requests
-import traceback
 import time
+import traceback
+import xml.etree.ElementTree as ET
 
 import pandas as pd
-import xml.etree.ElementTree as ET
+import requests
 
 PUBMED_BASE_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term="
 PUBMED_SUMMARY_BASE_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&id="

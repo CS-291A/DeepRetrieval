@@ -21,13 +21,12 @@
 import math
 
 import torch
+from megatron.core import ModelParallelConfig, tensor_parallel
 from megatron.core import parallel_state as mpu
-from megatron.core import tensor_parallel
-from megatron.core import ModelParallelConfig
 from torch import nn
 from transformers import LlamaConfig
-from verl.models.llama.megatron.layers.parallel_linear import QKVParallelLinear
 
+from verl.models.llama.megatron.layers.parallel_linear import QKVParallelLinear
 from verl.utils.megatron import tensor_parallel as tp_utils
 
 
@@ -285,10 +284,9 @@ Remove padding Attention
 - Compatible with sequence parallel
 """
 
-from transformers.utils import is_flash_attn_2_available
 import torch.nn.functional as F
-
 from einops import rearrange
+from transformers.utils import is_flash_attn_2_available
 
 if is_flash_attn_2_available():
     from flash_attn import flash_attn_varlen_func

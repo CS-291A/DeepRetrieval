@@ -1,16 +1,19 @@
 import ast
 import json
-import sys
 import os
-from tqdm import tqdm
-import torch
-sys.path.append('./')
+import sys
 
-from src.Lucene.utils import ndcg_at_k
+import torch
+from tqdm import tqdm
+
+sys.path.append('./')
 
 from typing import cast
 
-from pyserini.search.faiss import FaissSearcher, DenseSearchResult, AutoQueryEncoder
+from pyserini.search.faiss import AutoQueryEncoder, DenseSearchResult, FaissSearcher
+
+from src.Lucene.utils import ndcg_at_k
+
 
 class PyseriniFaissSearcher:
     def __init__(self, index_dir, model_name):

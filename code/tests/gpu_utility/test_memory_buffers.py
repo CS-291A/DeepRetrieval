@@ -17,10 +17,11 @@ Test memory buffers
 - We use Memory buffer to make one of the models and then compare the parameters
 """
 
-import torch
 import gc
 
-from transformers import LlamaModel, LlamaConfig
+import torch
+from transformers import LlamaConfig, LlamaModel
+
 from verl.utils.memory_buffer import MemoryBufferModuleWrapper
 
 

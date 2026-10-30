@@ -17,7 +17,6 @@ Adapted from Cruise.
 
 import torch
 
-
 HALF_LIST = [16, "16", "fp16", "float16"]
 FLOAT_LIST = [32, "32", "fp32", "float32"]
 BFLOAT_LIST = ["bf16", "bfloat16"]

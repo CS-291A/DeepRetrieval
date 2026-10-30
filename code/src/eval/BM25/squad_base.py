@@ -1,13 +1,13 @@
 import json
+
 try:
     import utils.java_init  # noqa: F401  (imported for its side effect: sets JAVA_HOME)
 except ImportError:
     print("Failed to import java_init")
 
+from pyserini.eval.evaluate_dpr_retrieval import SimpleTokenizer, has_answers
 from pyserini.search.lucene import LuceneSearcher
-from pyserini.eval.evaluate_dpr_retrieval import has_answers, SimpleTokenizer
 from tqdm import tqdm
-
 
 _searcher = None
 _tokenizer = SimpleTokenizer()

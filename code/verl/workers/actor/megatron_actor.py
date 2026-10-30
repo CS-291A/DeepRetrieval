@@ -19,28 +19,39 @@ In megatron actor, the differences are:
 Note that our model doesn't have to be `MegatronModule` because we don't share embedding in the last layer
 """
 
-from functools import partial
 from collections.abc import Iterable
+from functools import partial
 
 import torch
-from torch import nn
 import torch.distributed
+from megatron.core import ModelParallelConfig
+from megatron.core import parallel_state as mpu
+from megatron.core.pipeline_parallel import get_forward_backward_func
+
 # from megatron import get_args
 from megatron.optimizer import DistributedOptimizer
-from verl.utils.megatron.optimizer_config import OptimizerConfig
-from megatron.core import parallel_state as mpu
-from megatron.core import ModelParallelConfig
-from megatron.core.pipeline_parallel import get_forward_backward_func
-# from megatron.core.optimizer import DistributedOptimizer
 
+# from megatron.core.optimizer import DistributedOptimizer
 from omegaconf import OmegaConf
-from verl.utils.megatron.tensor_parallel import vocab_parallel_compute_entropy_loss, vocab_parallel_log_probs_from_logits
-from verl.utils.megatron.pipeline_parallel import (compute_transformers_input_shapes, make_batch_generator)
+from torch import nn
+
 from verl import DataProto
 from verl.trainer.ppo import core_algos
-from verl.workers.actor import BasePPOActor
+from verl.utils.megatron.optimizer_config import OptimizerConfig
+from verl.utils.megatron.pipeline_parallel import (
+    compute_transformers_input_shapes,
+    make_batch_generator,
+)
+from verl.utils.megatron.tensor_parallel import (
+    vocab_parallel_compute_entropy_loss,
+    vocab_parallel_log_probs_from_logits,
+)
 from verl.utils.py_functional import append_to_dict
-from verl.utils.torch_functional import broadcast_dict_tensor, split_dict_tensor_into_batches
+from verl.utils.torch_functional import (
+    broadcast_dict_tensor,
+    split_dict_tensor_into_batches,
+)
+from verl.workers.actor import BasePPOActor
 
 __all__ = ['MegatronPPOActor']
 

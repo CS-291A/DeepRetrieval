@@ -1,13 +1,15 @@
 import ast
 import json
-import sys
 import os
+import sys
+
 from tqdm import tqdm
+
 sys.path.append('./')
 
 from pyserini.search.lucene import LuceneSearcher
-from src.Lucene.utils import ndcg_at_k
 
+from src.Lucene.utils import ndcg_at_k
 
 if not os.path.exists("/shared/eng/pj20/lmr_model/raw_data/msmarco/indexes/lucene-index-msmarco-passage"):
     print("[Warning] Pyserini index not found for msmarco_beir")

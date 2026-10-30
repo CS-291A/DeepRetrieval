@@ -22,29 +22,29 @@ os.environ['MEGATRON_USE_CUDA_TIMER'] = '0'
 os.environ['MEGATRON_START_PROCESS_TIMER'] = 'False'
 os.environ['NCCL_DEBUG'] = 'WARN'
 
+import ray
 import torch
 import torch.distributed
-from torch import nn
-
-import ray
-from verl.single_controller.ray import RayClassWithInitArgs, RayResourcePool
-from verl.single_controller.ray.megatron import NVMegatronRayWorkerGroup
-from verl.single_controller.base.megatron.worker import MegatronWorker
-from verl.single_controller.base.decorator import register, Dispatch
-from verl import DataProto
-from verl.models.llama.megatron import ParallelLlamaForCausalLMRmPadPP
-
 from megatron.core import parallel_state as mpu  # pyright: ignore[reportMissingImports]  # megatron is not in the lock (upstream Megatron strategy)
-from megatron.core.models.gpt.gpt_model import ModelType  # pyright: ignore[reportMissingImports]  # megatron is not in the lock (upstream Megatron strategy)
 from megatron.core import tensor_parallel  # pyright: ignore[reportMissingImports]  # megatron is not in the lock (upstream Megatron strategy)
-from verl.utils.megatron_utils import get_model, init_megatron_optim_config, init_model_parallel_config
-from verl.utils.megatron.optimizer import get_megatron_optimizer
-
+from megatron.core.models.gpt.gpt_model import ModelType  # pyright: ignore[reportMissingImports]  # megatron is not in the lock (upstream Megatron strategy)
+from omegaconf import OmegaConf
+from tensordict import TensorDict
+from torch import nn
 from transformers import LlamaConfig
 
-from omegaconf import OmegaConf
-
-from tensordict import TensorDict
+from verl import DataProto
+from verl.models.llama.megatron import ParallelLlamaForCausalLMRmPadPP
+from verl.single_controller.base.decorator import Dispatch, register
+from verl.single_controller.base.megatron.worker import MegatronWorker
+from verl.single_controller.ray import RayClassWithInitArgs, RayResourcePool
+from verl.single_controller.ray.megatron import NVMegatronRayWorkerGroup
+from verl.utils.megatron.optimizer import get_megatron_optimizer
+from verl.utils.megatron_utils import (
+    get_model,
+    init_megatron_optim_config,
+    init_model_parallel_config,
+)
 
 
 @ray.remote
@@ -120,6 +120,7 @@ class Trainer(MegatronWorker):
 
     @register(dispatch_mode=Dispatch.MEGATRON_COMPUTE_PROTO)
     def train_model(self, data: DataProto) -> DataProto:
+        assert data.batch is not None
         input_ids = data.batch['input_ids']
         attention_mask = data.batch['attention_mask']
         position_ids = data.batch['position_ids']

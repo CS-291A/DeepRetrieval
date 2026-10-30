@@ -1,12 +1,11 @@
-import re
-import random
 import json
+import random
+import re
 import sys
+
 sys.path.append('./')
 
 from src.sql.bird import BirdDatabaseSearcher
-
-
 
 _searcher = None
 

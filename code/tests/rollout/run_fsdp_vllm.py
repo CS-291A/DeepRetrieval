@@ -13,16 +13,21 @@
 # limitations under the License.
 
 import os
-from transformers import AutoTokenizer, AutoConfig, AutoModelForCausalLM
-from torch.distributed.fsdp import FullyShardedDataParallel as FSDP, ShardingStrategy, MixedPrecision, CPUOffload
-from torch.distributed.fsdp.api import ShardingStrategy, ShardedStateDictConfig, StateDictType
+
 import torch
 import torch.distributed
-
-from verl.utils.distributed import initialize_global_process_group
-from verl.third_party.vllm import LLM
-
+from torch.distributed.fsdp import CPUOffload, MixedPrecision, ShardingStrategy
+from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+from torch.distributed.fsdp.api import (
+    ShardedStateDictConfig,
+    ShardingStrategy,
+    StateDictType,
+)
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 from vllm import SamplingParams  # pyright: ignore[reportMissingImports]  # vllm is Linux/CUDA-only (gpu extra)
+
+from verl.third_party.vllm import LLM
+from verl.utils.distributed import initialize_global_process_group
 
 
 def main():

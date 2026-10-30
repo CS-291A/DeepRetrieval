@@ -8,10 +8,12 @@ import pytest
 import torch
 from omegaconf import OmegaConf
 from tensordict import TensorDict
-from torch.optim.sgd import SGD  # torch 2.4 optim has no __all__, so pyright treats torch.optim.SGD as private
+from torch.optim.sgd import (
+    SGD,  # torch 2.4 optim has no __all__, so pyright treats torch.optim.SGD as private
+)
 
-from verl import DataProto
 import verl.utils.torch_functional as verl_F
+from verl import DataProto
 
 BATCH = 2
 PROMPT_LEN = 3

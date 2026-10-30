@@ -14,20 +14,22 @@
 # limitations under the License.
 """Pretrain utilities."""
 from typing import Any
-from omegaconf import DictConfig
-from verl.utils.torch_dtypes import PrecisionType
-from verl.utils.memory_buffer import build_memory_reference_from_module
-import torch
-from torch import nn
-import torch.nn.functional as F
 
+import torch
+import torch.nn.functional as F
 from megatron.core import mpu, tensor_parallel
-from megatron.core.utils import get_model_config
-from megatron.core.transformer import TransformerConfig
-from megatron.core.transformer.module import Float16Module
+
 # from megatron.core.distributed import DistributedDataParallelConfig
 from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.enums import ModelType
+from megatron.core.transformer import TransformerConfig
+from megatron.core.transformer.module import Float16Module
+from megatron.core.utils import get_model_config
+from omegaconf import DictConfig
+from torch import nn
+
+from verl.utils.memory_buffer import build_memory_reference_from_module
+from verl.utils.torch_dtypes import PrecisionType
 
 
 def get_model(model_provider_func, model_type=ModelType.encoder_or_decoder, wrap_with_ddp=True):

@@ -15,9 +15,10 @@
 Create a random model and tokenizer for PPO training
 """
 
-import torch
 import os
-from transformers import AutoModelForCausalLM, LlamaConfig, AutoTokenizer
+
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer, LlamaConfig
 
 from tests.e2e.envs.digit_completion import CharTokenizer
 

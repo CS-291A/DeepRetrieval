@@ -14,18 +14,19 @@
 """
 Contains a resharding manager that binds weights from FSDP zero3 to XPerfGPT
 """
-from .base import BaseShardingManager
-
-from torch.distributed.device_mesh import DeviceMesh
-
-from verl.utils.torch_functional import allgather_dict_tensors
-from verl.utils.ulysses import set_ulysses_sequence_parallel_group, get_ulysses_sequence_parallel_group
 import numpy as np
-
 import torch
 import torch.distributed
+from torch.distributed.device_mesh import DeviceMesh
 
 from verl import DataProto
+from verl.utils.torch_functional import allgather_dict_tensors
+from verl.utils.ulysses import (
+    get_ulysses_sequence_parallel_group,
+    set_ulysses_sequence_parallel_group,
+)
+
+from .base import BaseShardingManager
 
 
 class FSDPUlyssesShardingManager(BaseShardingManager):
@@ -63,6 +64,7 @@ class FSDPUlyssesShardingManager(BaseShardingManager):
             sp_size = self.device_mesh['sp'].size()
             group = self.device_mesh['sp'].get_group()
 
+            assert data.batch is not None, 'Ulysses all-gathers the tensor batch of a compute input'
             prev_device = data.batch.device
             data.batch = data.batch.cuda(device=torch.cuda.current_device())
             data.batch = allgather_dict_tensors(data.batch.contiguous(), size=sp_size, group=group, dim=0)

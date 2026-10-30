@@ -1,18 +1,17 @@
-import pandas as pd
-import os
 import argparse
-from tqdm import tqdm
-import sys
 import json
+import os
+import sys
+
 import numpy as np
+import pandas as pd
+from tqdm import tqdm
 
 tqdm.pandas()
 
 sys.path.append('./')
 
-from src.utils.claude_aws import chat_sonnet, chat_haiku
-
-
+from src.utils.claude_aws import chat_haiku, chat_sonnet
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

@@ -18,22 +18,30 @@ This trainer supports model-agonistic model initialization with huggingface
 
 import os
 import uuid
+from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
 from pprint import pprint
-from collections.abc import Callable
 
 import numpy as np
 from codetiming import Timer
 from omegaconf import OmegaConf, open_dict
+
 from verl import DataProto
 from verl.protocol import pad_dataproto_to_divisor, unpad_dataproto
 from verl.single_controller.base import Worker
-from verl.single_controller.ray import RayResourcePool, RayWorkerGroup, RayClassWithInitArgs
+from verl.single_controller.ray import (
+    RayClassWithInitArgs,
+    RayResourcePool,
+    RayWorkerGroup,
+)
 from verl.single_controller.ray.base import create_colocated_worker_cls
 from verl.trainer.ppo import core_algos
-from verl.utils.seqlen_balancing import get_seqlen_balanced_partitions, log_seqlen_unbalance
+from verl.utils.seqlen_balancing import (
+    get_seqlen_balanced_partitions,
+    log_seqlen_unbalance,
+)
 from verl.utils.torch_functional import scalars_to_floats
 
 WorkerType = type[Worker]
@@ -79,12 +87,14 @@ class ResourcePoolManager:
 
 
 import torch
+
 from verl.utils.torch_functional import masked_mean
 
 
 def apply_kl_penalty(data: DataProto,
                      kl_ctrl: core_algos.FixedKLController | core_algos.AdaptiveKLController,
                      kl_penalty='kl'):
+    assert data.batch is not None, 'the PPO training batch carries rollout and reward tensors'
     responses = data.batch['responses']
     response_length = responses.size(1)
     token_level_scores = data.batch['token_level_scores']
@@ -119,6 +129,7 @@ def apply_kl_penalty(data: DataProto,
 def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_repeat=1):
     # prepare response group
     # TODO: add other ways to estimate advantages
+    assert data.batch is not None, 'the PPO training batch carries rollout and reward tensors'
     if adv_estimator == 'gae':
         values = data.batch['values']
         responses = data.batch['responses']
@@ -594,6 +605,7 @@ class RayPPOTrainer:
 
     def _create_dataloader(self):
         from torch.utils.data import DataLoader
+
         # TODO: we have to make sure the batch size is divisible by the dp size
         from verl.utils.dataset.rl_dataset import RLHFDataset, collate_fn
         self.train_dataset = RLHFDataset(parquet_files=self.config.data.train_files,
@@ -806,6 +818,7 @@ class RayPPOTrainer:
 
     def _balance_batch(self, batch: DataProto, metrics, logging_prefix='global_seqlen'):
         """Reorder the data on single controller such that each dp rank gets similar total tokens"""
+        assert batch.batch is not None, 'the PPO training batch carries rollout tensors'
         attention_mask = batch.batch['attention_mask']
         batch_size = attention_mask.shape[0]
         global_seqlen_lst = batch.batch['attention_mask'].view(batch_size, -1).sum(-1).tolist()  # (train_batch_size,)
@@ -827,8 +840,9 @@ class RayPPOTrainer:
         The driver process only need to call the compute functions of the worker group through RPC to construct the PPO dataflow.
         The light-weight advantage computation is done on the driver process.
         """
-        from verl.utils.tracking import Tracking
         from omegaconf import OmegaConf
+
+        from verl.utils.tracking import Tracking
 
         logger = Tracking(project_name=self.config.trainer.project_name,
                           experiment_name=self.config.trainer.experiment_name,
@@ -865,6 +879,7 @@ class RayPPOTrainer:
                     with _timer('gen', timing_raw):
                         gen_batch_output = self.actor_rollout_wg.generate_sequences(gen_batch)
 
+                    assert batch.batch is not None, 'from_single_dict always builds a TensorDict (empty after the pop)'
                     batch.non_tensor_batch['uid'] = np.array([str(uuid.uuid4()) for _ in range(len(batch.batch))],
                                                              dtype=object)
                     # repeat to align with repeated responses in rollout
@@ -877,6 +892,7 @@ class RayPPOTrainer:
                     self._balance_batch(batch, metrics=metrics)
 
                     # compute global_valid tokens
+                    assert batch.batch is not None, 'union with the rollout output keeps the tensor batch'
                     batch.meta_info['global_token_num'] = torch.sum(batch.batch['attention_mask'], dim=-1).tolist()
 
                     if self.use_reference_policy:
@@ -903,6 +919,7 @@ class RayPPOTrainer:
                         # we combine with rule-based rm
                         assert self.reward_fn is not None, 'RayPPOTrainer.fit requires reward_fn'
                         reward_tensor = self.reward_fn(batch)
+                        assert batch.batch is not None, 'union with worker outputs keeps the tensor batch'
                         batch.batch['token_level_scores'] = reward_tensor
 
                         # compute rewards. apply_kl_penalty if available

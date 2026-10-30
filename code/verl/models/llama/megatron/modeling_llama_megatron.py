@@ -22,8 +22,7 @@
 
 import torch
 import torch.utils.checkpoint
-from megatron.core import tensor_parallel
-from megatron.core import ModelParallelConfig
+from megatron.core import ModelParallelConfig, tensor_parallel
 from torch import nn
 from transformers.modeling_outputs import BaseModelOutputWithPast
 from transformers.models.llama.configuration_llama import LlamaConfig
@@ -31,7 +30,13 @@ from transformers.models.llama.modeling_llama import CausalLMOutputWithPast
 
 from verl.utils.megatron import sequence_parallel as sp_utils
 from verl.utils.megatron import tensor_parallel as tp_utils
-from .layers import ParallelLlamaDecoderLayer, ParallelLlamaRMSNorm, ParallelLlamaDecoderLayerRmPad
+
+from .layers import (
+    ParallelLlamaDecoderLayer,
+    ParallelLlamaDecoderLayerRmPad,
+    ParallelLlamaRMSNorm,
+)
+
 """
 TODO: 
 1. Add weight initialization. Here we need to be careful on TP weight init.

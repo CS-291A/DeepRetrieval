@@ -1,9 +1,11 @@
 import json
+import sys
+
 import numpy as np
 import torch
-from transformers import AutoTokenizer, AutoModel
 from tqdm import tqdm
-import sys
+from transformers import AutoModel, AutoTokenizer
+
 sys.path.append('code')
 import os
 

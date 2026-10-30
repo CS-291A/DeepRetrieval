@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from verl.single_controller.base.worker import Worker, DistRankInfo, DistGlobalInfo
+from verl.single_controller.base.worker import DistGlobalInfo, DistRankInfo, Worker
 
 
 class MegatronWorker(Worker):

@@ -1,12 +1,12 @@
-import os
-from datasets import Dataset, concatenate_datasets
-from typing import Any, cast
-from collections.abc import Iterable
-from verl.utils.hdfs_io import copy, makedirs
 import argparse
 import json
+import os
+from collections.abc import Iterable
+from typing import Any, cast
 
+from datasets import Dataset, concatenate_datasets
 
+from verl.utils.hdfs_io import copy, makedirs
 
 INSTRUCTION = """
 You are an expert in query generation. Given a multi-hop question, your task is to create query terms to retrieve documents that can help answer the question."""

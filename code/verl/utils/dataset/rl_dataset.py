@@ -12,20 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from omegaconf import ListConfig
 import os
 from typing import cast
 
-import pandas as pd
-
-import torch
 import numpy as np
+import pandas as pd
+import torch
+from omegaconf import ListConfig
 from torch.utils.data import Dataset
 from transformers import PreTrainedTokenizer
-from verl.utils.fs import copy_local_path_from_hdfs
 
-from verl.utils.model import compute_position_id_with_mask
 import verl.utils.torch_functional as verl_F
+from verl.utils.fs import copy_local_path_from_hdfs
+from verl.utils.model import compute_position_id_with_mask
 
 
 def collate_fn(data_list: list[dict]) -> dict:

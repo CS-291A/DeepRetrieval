@@ -1,7 +1,6 @@
+import argparse
 import json
 import re
-
-import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--dataset_name', type=str, default='msmarco_beir')

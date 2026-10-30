@@ -21,12 +21,14 @@ Apply monkey-patch function to models
 
 def apply_monkey_patch_to_llama():
     from transformers.models.llama.modeling_llama import LlamaFlashAttention2
+
     from verl.models.transformers.llama import llama_flash_attn_forward
     LlamaFlashAttention2.forward = llama_flash_attn_forward  # pyright: ignore[reportAttributeAccessIssue]  # transformers 4.47 annotates the cache slot Tuple[Tensor] but returns a Cache (verified in its own forward)
 
 
 def apply_monkey_patch_to_qwen2():
     from transformers.models.qwen2.modeling_qwen2 import Qwen2FlashAttention2
+
     from verl.models.transformers.qwen2 import qwen2_flash_attn_forward
     Qwen2FlashAttention2.forward = qwen2_flash_attn_forward
 
@@ -57,9 +59,10 @@ def apply_monkey_patch(config: PretrainedConfig, verbose=True):
     return success_apply_monkey_patch
 
 
-from functools import lru_cache
-from packaging import version
 import importlib.metadata
+from functools import lru_cache
+
+from packaging import version
 
 
 @lru_cache

@@ -25,18 +25,19 @@ When working with Megatron:
 - After inference, all the parameters that doesn't belong to this pp rank is freed.
 """
 from contextlib import contextmanager
-from omegaconf import DictConfig
+
 import torch
 import torch.distributed
+from omegaconf import DictConfig
 from tensordict import TensorDict
 from torch import nn
+from vllm import SamplingParams  # pyright: ignore[reportMissingImports]  # vllm is Linux/CUDA-only (gpu extra)
 
 from verl import DataProto
-from verl.utils.torch_functional import get_eos_mask, pad_sequence_to_length
-from verl.workers.rollout.base import BaseRollout
 from verl.third_party.vllm import LLM, vllm_version
 from verl.third_party.vllm import parallel_state as vllm_ps
-from vllm import SamplingParams  # pyright: ignore[reportMissingImports]  # vllm is Linux/CUDA-only (gpu extra)
+from verl.utils.torch_functional import get_eos_mask, pad_sequence_to_length
+from verl.workers.rollout.base import BaseRollout
 
 # TODO
 # 1. support pp in vllm
@@ -154,6 +155,7 @@ class vLLMRollout(BaseRollout):
         if self.config.free_cache_engine:
             self.inference_engine.init_cache_engine()
 
+        assert prompts.batch is not None, 'rollout prompts carry input_ids/attention_mask/position_ids'
         idx = prompts.batch['input_ids']  # (bs, prompt_length)
         # left-padded attention_mask
         attention_mask = prompts.batch['attention_mask']

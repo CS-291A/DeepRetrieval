@@ -1,8 +1,7 @@
-import json
-import re
-import os
-
 import argparse
+import json
+import os
+import re
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--model_name', type=str, default='gpt-35')

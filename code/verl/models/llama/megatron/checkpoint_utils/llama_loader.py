@@ -12,8 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import torch
 import time
+
+import torch
 import torch.distributed as dist
 
 
@@ -49,10 +50,10 @@ def _megatron_calc_layer_map(config):
 def load_state_dict_to_megatron_llama(state_dict, wrapped_models, config, params_dtype, is_value_model=False):
     """Load merged state_dict to sharded Megatron module in training.
     """
-    from megatron.core import mpu
-    from megatron.utils import print_rank_0, unwrap_model
-    from megatron.core.transformer.module import Float16Module
     from megatron.core import DistributedDataParallel as LocalDDP
+    from megatron.core import mpu
+    from megatron.core.transformer.module import Float16Module
+    from megatron.utils import print_rank_0, unwrap_model
     from torch.nn.parallel import DistributedDataParallel as torchDDP
 
     start_time = time.time()

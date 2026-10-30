@@ -1,0 +1,13 @@
+{
+  "version": "0.2",
+  "language": "en",
+  "ignorePaths": ["**/.venv/**", "**/uv.lock", "code/verl/third_party/**", "code/data/**", "**/*.ipynb"],
+  "words": [
+    "Bytedance", "verl", "vllm", "DeepRetrieval", "pyserini", "faiss", "tensordict", "codetiming", "wandb",
+    "einops", "pybind", "pyhealth", "huggingface", "setuptools", "sdist", "testpaths", "pytest", "numpy",
+    "CUDA", "NCCL", "FSDP", "megatron", "ulysses", "rmpad", "dataproto", "pyright", "Pylance", "pydantic",
+    "Qwen", "PubMed", "pubmed", "ctgov", "pmid", "pmids", "msmarco", "nfcorpus", "scifact", "hotpotqa",
+    "fiqa", "triviaqa", "beir", "ndcg", "BM25", "parquet", "jsonl", "logprob", "logprobs", "kl_ctrl",
+    "rollout", "rollouts", "actor", "detokenize", "jvm", "openjdk", "omegaconf", "hydra", "ray", "uvicorn"
+  ]
+}

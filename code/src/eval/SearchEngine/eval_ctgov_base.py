@@ -1,5 +1,5 @@
-import sys
 import os
+import sys
 
 # Debug: Print current directory and Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -8,11 +8,12 @@ project_root = os.path.dirname(os.path.dirname(current_dir))
 sys.path.insert(0, project_root)
 
 
-from tqdm import tqdm
 import json
+import time
 from collections import deque
 from threading import Lock
-import time
+
+from tqdm import tqdm
 
 from verl.utils.apis.ctgov import CTGovAPI
 
