@@ -30,7 +30,7 @@ class Tracking:
         for backend in default_backend:
             if backend == 'tracking':
                 import warnings
-                warnings.warn("`tracking` logger is deprecated. use `wandb` instead.", DeprecationWarning)
+                warnings.warn("`tracking` logger is deprecated. use `wandb` instead.", DeprecationWarning, stacklevel=2)
             else:
                 assert backend in self.supported_backend, f'{backend} is not supported'
 
@@ -61,6 +61,14 @@ class Tracking:
         for default_backend, logger_instance in self.logger.items():
             if backend is None or default_backend in backend:
                 logger_instance.log(data=data, step=step)
+
+    def finish(self, exit_code: int) -> None:
+        """End the run with the job's outcome: 0 marks a W&B run finished, anything else failed.
+
+        Backends without a run to close (console, mlflow adapter) are left as they are.
+        """
+        if 'wandb' in self.logger:
+            self.logger['wandb'].finish(exit_code=exit_code)
 
 
 class _MlflowLoggingAdapter:

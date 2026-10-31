@@ -1,9 +1,12 @@
 import json
+import logging
 import time
 import traceback
 
 import pandas as pd
 import requests
+
+logger = logging.getLogger(__name__)
 
 CTGOV_BASE_URL = "https://clinicaltrials.gov/api/v2/studies?query.term="
 CTGOV_NCTID_BASE_URL = "https://clinicaltrials.gov/api/v2/studies?&query.id="
@@ -41,7 +44,7 @@ class CTGovAPI:
         
         for attempt in range(self.retry + 1):
             if attempt > 0:
-                print(f"Retry {attempt} times")
+                logger.warning("Retry %d times", attempt)
                 time.sleep(self.request_delay * 2)  # Longer delay on retries
             
             # Each attempt starts from scratch so a failed attempt leaves no duplicate ids behind
@@ -106,8 +109,7 @@ class CTGovAPI:
             except Exception as e:
                 err_msg = traceback.format_exc()
                 last_error = e
-                print(f"Error in CTGov API search: {e}")
-                print(err_msg)
+                logger.warning("CTGov API search attempt %d/%d failed", attempt + 1, self.retry + 1, exc_info=True)
 
         if err_msg != "":
             raise RuntimeError(f"A CTGOV API error occurred: {last_error}")
@@ -131,7 +133,7 @@ class CTGovAPI:
 
         for attempt in range(self.retry + 1):
             if attempt > 0:
-                print(f"Retry {attempt} times")
+                logger.warning("Retry %d times", attempt)
                 time.sleep(self.request_delay * 2)  # Longer delay on retries
                 
             try:
@@ -204,8 +206,8 @@ class CTGovAPI:
             except Exception as e:
                 err_msg = traceback.format_exc()
                 last_error = e
-                print(f"Error in get_trials_by_nctids: {e}")
-                print(err_msg)
+                logger.warning("CTGov get_trials_by_nctids attempt %d/%d failed", attempt + 1, self.retry + 1,
+                               exc_info=True)
 
         if err_msg != "" and trials is None:
             raise RuntimeError(f"A CTGOV API error occurred: {last_error}")

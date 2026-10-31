@@ -1,4 +1,5 @@
 """A6, D30, G5 (approved change): SQL executors and the bird / spider rewards."""
+import logging
 import sqlite3
 
 import pytest
@@ -139,13 +140,15 @@ def test_sql_reward_timed_out_gold_scores_zero(load_reward_module, db_path, fake
 
 
 @pytest.mark.parametrize(("module_name", "mismatch_score"), SQL_REWARDS)
-def test_sql_reward_timed_out_gold_is_logged(load_reward_module, db_path, fake_timer, capsys, module_name,
-                                             mismatch_score):
+def test_sql_reward_timed_out_gold_is_logged_at_warning(load_reward_module, db_path, fake_timer, caplog, module_name,
+                                                        mismatch_score):
     module = load_reward_module(module_name)
 
-    module.calculate_answer_score(EMPTY_SQL, SLOW_SQL, db_path)
+    with caplog.at_level(logging.DEBUG, logger=module_name):
+        module.calculate_answer_score(EMPTY_SQL, SLOW_SQL, db_path)
 
-    assert f"Gold SQL timed out on {db_path}" in capsys.readouterr().out
+    assert [r.levelno for r in caplog.records
+            if r.name == module_name and f"Gold SQL timed out on {db_path}" in r.getMessage()] == [logging.WARNING]
 
 
 @pytest.mark.parametrize(("module_name", "mismatch_score"), SQL_REWARDS)

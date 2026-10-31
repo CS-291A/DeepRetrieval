@@ -426,7 +426,8 @@ def get_cosine_schedule_with_warmup(
     Return:
         :obj:`torch.optim.lr_scheduler.LambdaLR` with the appropriate schedule.
     """
-    assert min_lr_ratio >= 0 and min_lr_ratio <= 1.
+    assert min_lr_ratio >= 0, f'min_lr_ratio must be >= 0, got {min_lr_ratio}'
+    assert min_lr_ratio <= 1., f'min_lr_ratio must be <= 1, got {min_lr_ratio}'
     coef = (1 - min_lr_ratio) * 0.5
     intercept = (1 + min_lr_ratio) * 0.5
 

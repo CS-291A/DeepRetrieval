@@ -134,6 +134,19 @@ def save_metrics(metrics, model_name, dataset_name):
         f.writelines(f"{metric_name}: {value}\n" for metric_name, value in metrics.items())
     print(f"Saved metrics to {output_file}")
 
+def print_recall_summary(recall_at_1, recall_at_5, recall_at_20, recall_at_100):
+    """Print the running Recall@k; report an empty run instead of dividing by zero."""
+    assert len(recall_at_1) == len(recall_at_5) == len(recall_at_20) == len(recall_at_100), \
+        "recall lists out of step: every scored query appends to all of them"
+    if not recall_at_1:
+        print("Current Recall: no queries scored")
+        return
+    print(f"Current Recall@1: {sum(recall_at_1) / len(recall_at_1)}")
+    print(f"Current Recall@5: {sum(recall_at_5) / len(recall_at_5)}")
+    print(f"Current Recall@20: {sum(recall_at_20) / len(recall_at_20)}")
+    print(f"Current Recall@100: {sum(recall_at_100) / len(recall_at_100)}")
+
+
 def evaluate_model(data_path, model_name, dataset_name, batch_size=8, max_retries=5):
     print(f"\nEvaluating {model_name} on {dataset_name}")
     df = pd.read_parquet(data_path)
@@ -253,13 +266,7 @@ def evaluate_model(data_path, model_name, dataset_name, batch_size=8, max_retrie
                 continue
             
             
-        try:
-            print(f"Current Recall@1: {sum(recall_at_1) / len(recall_at_1)}")
-            print(f"Current Recall@5: {sum(recall_at_5) / len(recall_at_5)}")
-            print(f"Current Recall@20: {sum(recall_at_20) / len(recall_at_20)}")
-            print(f"Current Recall@100: {sum(recall_at_100) / len(recall_at_100)}")
-        except Exception:
-            continue
+        print_recall_summary(recall_at_1, recall_at_5, recall_at_20, recall_at_100)
 
     # Save generations
     save_generations(all_responses, model_name, dataset_name)

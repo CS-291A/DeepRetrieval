@@ -1,7 +1,10 @@
 import json
+import logging
 import random
 import re
 import sys
+
+logger = logging.getLogger(__name__)
 
 sys.path.append('./')
 
@@ -32,7 +35,7 @@ def extract_solution(solution_str):
     elif "<|im_start|>assistant" in solution_str:
         processed_str = solution_str.split("<|im_start|>assistant", 1)[1].strip()
     else:
-        print("[Error] Failed to locate model response header")
+        logger.debug('Failed to locate model response header')
         return None, ""
 
     # Regular expression to find the last occurrence of <answer>...</answer>
@@ -42,7 +45,7 @@ def extract_solution(solution_str):
     if matches:
         return matches[-1].strip(), processed_str  # Return the last matched answer
     else:
-        print("[Error] No valid answer tags found")
+        logger.debug('No valid answer tags found')
         return None, processed_str
         
 def validate_response_structure(processed_str: str, do_print: bool) -> bool:
@@ -55,7 +58,7 @@ def validate_response_structure(processed_str: str, do_print: bool) -> bool:
         Boolean indicating whether all formatting requirements are met
     """
     if do_print:
-        print("\n[Structure Validation]")
+        logger.debug('[Structure Validation]')
     validation_passed = True
 
     # Check required tags
@@ -70,21 +73,21 @@ def validate_response_structure(processed_str: str, do_print: bool) -> bool:
         positions[tag_name] = pos = processed_str.find(tag_str)
         
         if do_print:
-            print(f"  {tag_str}: count={count}, position={pos}")
+            logger.debug('%s: count=%s, position=%s', tag_str, count, pos)
         
         if count != expected_count:
             if do_print:
-                print(f"  [Error] {tag_str} appears {count} times (expected {expected_count})")
+                logger.debug('%s appears %s times (expected %s)', tag_str, count, expected_count)
             validation_passed = False
 
     # Verify tag order
     if (positions['answer_start'] > positions['answer_end']):
         if do_print:
-            print("  [Error] Incorrect tag order: Expected <answer>...</answer>")
+            logger.debug('Incorrect tag order: Expected <answer>...</answer>')
         validation_passed = False
     else:
         if do_print:
-            print("  Tag sequence validation passed")
+            logger.debug('Tag sequence validation passed')
     
     return validation_passed
 
@@ -93,7 +96,7 @@ def check_json_format(json_str, do_print=False):
     try:
         if not json_str:
             if do_print:
-                print("[Error] Empty JSON string")
+                logger.debug('Empty JSON string')
             return False
         
         data = json.loads(json_str)
@@ -102,14 +105,14 @@ def check_json_format(json_str, do_print=False):
         required_keys = {"sql"}
         if not isinstance(data, dict) or not all(key in data for key in required_keys):
             if do_print:
-                print("[Error] Missing required keys in JSON")
+                logger.debug('Missing required keys in JSON')
             return False
 
         return True
     # except json.JSONDecodeError:
     except Exception:
         if do_print:
-            print("[Error] JSON decoding failed")
+            logger.debug('JSON decoding failed')
         return False
 
 def execute_sql(sql_query, db_path):
@@ -127,7 +130,7 @@ def calculate_answer_score(pred_sql, gold_sql, db_path, do_print=False):
         # answer_score = 2 if set(pred_results) == set(gold_results) else 0.5
         if gold_results is None:
             # The reference query timing out is a data/infra problem, not a match for anything.
-            print(f"[Error] Gold SQL timed out on {db_path}: {gold_sql}")
+            logger.warning('Gold SQL timed out on %s: %s', db_path, gold_sql)
             answer_score = 0
         else:
             # A timed-out prediction (None) never matches.
@@ -136,7 +139,7 @@ def calculate_answer_score(pred_sql, gold_sql, db_path, do_print=False):
         
     except Exception as e:
         if do_print:
-            print(f"[Error] Error in executing SQL: {e}")
+            logger.debug('Error in executing SQL: %s', e)
         pred_results = []
         gold_results = []
 
@@ -149,7 +152,7 @@ def calculate_answer_score(pred_sql, gold_sql, db_path, do_print=False):
     if do_print:
         # print(f"Retrieved results: {pred_results}")
         # print(f"Target: {gold_results} ")
-        print(f"Answer score: {answer_score}")
+        logger.debug('Answer score: %s', answer_score)
 
     
     return answer_score
@@ -182,10 +185,9 @@ def compute_score(solution_str, ground_truth, data_source, db_path, format_rewar
     #     print(f"Format score: {format_score}")
     
     if do_print:
-        print("--------------------------------")
         # schema = extract_database_schema(solution_str)
         # print(f"Database Schema: {schema}")
-        print(f"Solution string: {solution_str}")
+        logger.info('--------------------------------\nSolution string: %s', solution_str)
     
     answer_score = 0
 
@@ -202,12 +204,8 @@ def compute_score(solution_str, ground_truth, data_source, db_path, format_rewar
             total_score = format_score
     
     if do_print:
-        print("\n" + "-"*80)
-        print(" Final Score ".center(80, '-'))
-        print(f"  Format: {format_score}")
-        print(f"  Answer: {answer_score}")
-        print(f"  Total: {total_score}")
-        print("="*80 + "\n")
+        logger.info('\n%s\n%s\n  Format: %s\n  Answer: %s\n  Total: %s\n%s', "-" * 80, " Final Score ".center(80, '-'),
+                    format_score, answer_score, total_score, "=" * 80)
 
     return total_score
 

@@ -124,10 +124,10 @@ def _copy(from_path: str, to_path: str, timeout: int | None = None) -> bool:
             try:
                 shutil.copy(from_path, to_path)
                 returncode = 0
-            except shutil.SameFileError:
+            except shutil.SameFileError:  # obs: allow LOG007 copying a file onto itself already has the result
                 returncode = 0
-            except Exception as e:
-                logger.warning(f"copy {from_path} {to_path} failed: {e}")
+            except Exception:
+                logger.warning("copy %s %s failed", from_path, to_path, exc_info=True)
                 returncode = -1
     return returncode == 0
 

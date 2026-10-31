@@ -973,3 +973,375 @@ annotation. Suppressing in the tests would leave stale ignores once verl is fixe
   - `compileall` OK;
   - `audit_tests.py tests/deepretrieval` clean;
   - the touched files are ruff-clean apart from a pre-existing B028 at `tracking.py:33`.
+
+
+# Part 7 — Second audit: design patterns, tests, negative space, observability
+
+The `design-patterns-expert`, `pytest-expert`, `negative-space-programming` and `observability-expert` audit scripts were run on the branch after PR #3, and the high-signal hits were checked by hand. The pytest skill's mutation checker was run on the functions that most affect results. All approved items were implemented test-first. Item 13 (legacy upstream GPU/Ray tests) was skipped: those tests can't run on this machine, so changes to them would be unverified.
+
+| # | Item | Behaviour impact |
+|---|---|---|
+| 1 | `screening.py` bare `except:` → `except (ValueError, RecursionError)` | none (KeyboardInterrupt/SystemExit now propagate) |
+| 2 | BM25 eval recall summary no longer vanishes on empty results (`print_recall_summary`). The same fix was applied to `evidence_gpt_claude{,_no_reason}.py` (same defect, found in the re-audit) | same numbers; an empty run now says so |
+| 3 | 12 compound asserts split (3 left are in vendored/megatron code) | same conditions; messages name the failing half |
+| 5 | W&B runs marked failed: `Tracking.finish(exit_code)`; `RayPPOTrainer.fit` finishes with 1 on any exception, 0 otherwise | crashed runs now show as failed |
+| 6 | 556 prints in 30 reward/API files → module loggers (per-rollout DEBUG, sampled dumps INFO, infrastructure WARNING); `RewardManager` sample dump → `logger.info` | **console output changes**: per-rollout `Query:`/`[Error]` lines gone at the default level |
+| 7 | `import verl` no longer calls `basicConfig`. Entry points (incl. Ray `main_task`) call `configure_logging()`: root WARNING, `verl`/`__main__` at `VERL_LOGGING_LEVEL` (default INFO); idempotent | **logging output changes**: format kept; a host app's config is no longer overridden |
+| 8 | 6 error logs now carry tracebacks | none |
+| 9 | model_generate retry/fallback handlers log each failed attempt (WARNING + traceback) or fallback | none to outputs |
+| 10 | root-logger calls → module loggers (`worker_group.py`, `rendezvous/ray_backend.py`) | none |
+| 12 | mutation-gap tests: `ndcg_at_k` 10/15 → 14/15, hit ratios 6/8 → 7/8, mean NDCG 7/9 → 8/9, SQL accuracy → 7/7 (survivors argued equivalent) | tests only |
+| 14 | `pytest-randomly` in the dev group: plain `pytest` now shuffles order; `-p no:randomly` for fixed order. One order-dependent test fixed | tests only |
+| 15 | Reward routing in one ordered table (`verl/trainer/reward_registry.py`): adding a dataset is 1 row instead of up to 4 edits in 2 files; data_source substring checks in `main_ppo.py`/`ray_trainer.py` 70 → 0. 127 characterisation tests passed before and after | identical routing for every routable source; strings naming two datasets (e.g. `screening_pubmed`), which always ended in TypeError, now get one row's kwargs |
+
+**Verification:**
+- `uv run pytest` → `861 passed, 16 skipped`, in fixed order and under random seeds 1, 7, 42, 555, 1234, 2024, 31337 and 98765.
+- pyright → 0 errors.
+- `compileall` OK.
+- No import-sort findings.
+- `audit_tests.py tests/deepretrieval` clean.
+- Negative-space error gate: 0 outside vendored code.
+- Observability audit, outside vendored code: 415 → 90. What remains:
+  - `print` in GPU worker, trainer and dataset code and in standalone scripts, outside the approved scope;
+  - f-string log arguments;
+  - 4 deliberate fallbacks;
+  - the LOG008 false positive (it logs the key file's path, not the key).
+- `VERL_LOGGING_LEVEL=DEBUG` was checked to surface the per-query records, and the default level hides them.
+
+## Part 7 write-up A
+
+
+All test ids are relative to `code/`. "Characterisation" = written against the pre-change code, passed there, and must keep passing. "Red-first" = watched fail for the stated reason before the code change.
+
+#### Item 15: one reward-routing table
+
+- **Files:** new `verl/trainer/reward_registry.py`; `verl/trainer/main_ppo.py` (`_select_rm_score_fn`, `RewardManager.__call__`); `verl/trainer/ppo/ray_trainer.py` (`_validate`, `fit`; the metric helpers moved out).
+- **Problem:** four substring chains had to agree, in two files: the module chain in `_select_rm_score_fn` (16 branches plus 10 variant checks), the kwargs chain in `RewardManager.__call__`, the validation metric chain in `_validate`, and the training metric chain on `config.data.train_files` in `fit`. They had already drifted: fiqa had no reward function (A3), and `_validate` still listed `trial_no_reason`, which had no reward module.
+- **Fix:** `ROUTES`, an ordered tuple of frozen `RewardRoute(marker, module, build_kwargs, validation_metric, training_metric, variant)` rows. The rows keep the old precedence (screening, pubmed, pmd_no_reason, ctgov, fiqa, scifact, nfcorpus, nq_serini, triviaqa, squad, hotpotqa, fever, msmarco_beir, msmarco, bird, spider), so 'msmarco_beir' still wins over 'msmarco'. `variant=('dense'|'no_reason'|'wor', module)` picks the alternative module. Reward modules are imported lazily with `importlib.import_module`. The pieces are small functions:
+  - kwargs builders: `no_extra_kwargs`, `publication_search_kwargs`, `trial_search_kwargs`, `data_source_kwargs`, `sql_kwargs`;
+  - validation metric functions: `no_validation_metric`, `validation_mean_ndcg`, `validation_answer_span_recall`, `validation_sql_accuracy`, `validation_reward_equals_3`;
+  - lookups: `find_route`, `require_route` (raises the unchanged `NotImplementedError("No reward function for data_source '...'")`), `select_compute_score`, `validation_metrics`, `select_training_metrics`. The last one keeps the `'sql'` marker for `data/sql/sql_all`, a path that names no dataset.
+
+  The used metric helpers moved verbatim from ray_trainer into the registry so the table can reference them without an import cycle: the constants, `compute_answer_span_hit_ratios`, `compute_mean_ndcg`, `compute_sql_accuracy`, and `compute_reward_metrics_{search_engine,nq_serini,ndcg,recall_ndcg,sql}`. The only edit made while moving them: 3 unused locals and their commented-out block in `compute_reward_metrics_sql` were deleted, because ruff F841 flagged them in the new file. The unused `compute_reward_metrics_recall_at_k` and `compute_reward_metrics_` stay in ray_trainer. No pattern beyond the table: no class hierarchy, no Protocol, no plugin discovery.
+- **What got simpler (counts):**
+  - Substring tests: 70 → 0 in main_ppo.py and ray_trainer.py (39 in main_ppo, 31 in ray_trainer). The table has 16 markers, 10 variant markers and the one `'sql'` marker.
+  - Adding a dataset: 1 table row. Before, it took up to 4 edits in 2 files: the module branch, the kwargs branch, the `_validate` branch and the `fit` branch.
+  - Line counts, including blank and comment lines: `_select_rm_score_fn` 94 → 4; the RewardManager kwargs chain 22 → 5; the `_validate` metric loop 27 → 3; the `fit` metric selection 14 → 2. Net, main_ppo.py and ray_trainer.py lose about 300 lines, and the new registry is about 320 lines, about 160 of which are the metric helpers moved verbatim.
+  - Cost: reading one route end to end now spans 2 files (main_ppo.py → reward_registry.py), and the dispatch no longer shows at the call site.
+- **Tests:**
+  - Characterisation, module and kwargs: `tests/deepretrieval/rewards/test_reward_routing.py`, 66 cases. 30 data_sources taken from data_preprocess/ and scripts/train/ (each with the selected `compute_score` and the exact kwargs passed through the real `RewardManager.__call__`); 5 unroutable sources raising `NotImplementedError` with the exact message; and reward placement on the last token. Every reward module is replaced by a recording fake in `sys.modules` and on its parent package.
+  - Characterisation, metrics: `tests/deepretrieval/core/test_reward_metric_routing.py`, 61 cases. The validation metric for all 30 routable sources plus one unrouted source (`some_other_task`) and one mixed batch. The training metric logged by a real `fit` step for all 29 `train_files` paths (28 from scripts/train/ with `${domain}` expanded, plus `data/screening`) and a ListConfig of paths. The rewards `[6, 3, 1.2, 0.6, 0]` give a different value under each metric family.
+  - Both suites passed on the pre-refactor code and still pass.
+  - Red-first: `tests/deepretrieval/core/test_reward_registry.py` (table properties: every module path resolves, markers are unique, overlapping-marker order, the msmarco training metric is checked by identity, sql_all). It failed with `ImportError: cannot import name 'reward_registry'`.
+  - Shared harness: `tests/deepretrieval/core/_fit_harness.py`.
+- **Behaviour impact:**
+  - None on any data_source or train_files path the repo produces (127 characterisation cases).
+  - Divergence only for strings carrying two dataset markers, where the old chains disagreed with each other. Example: `screening_pubmed` used to send search kwargs to `screening.compute_score(solution_str, ground_truth)`, a TypeError. Every such kwargs case used to crash, because the no-extra-kwargs modules (screening, nq/triviaqa/squad) reject unknown kwargs (checked against their signatures). Now each string gets its own row's kwargs.
+  - `_validate`'s `trial_no_reason` branch is gone. It was unreachable: the reward manager raises `NotImplementedError` for that source before metrics are computed.
+  - `ray_trainer.compute_reward_metrics_*` and the helpers now live in `verl.trainer.reward_registry`. The only importers were tests, which were updated.
+
+#### Item 5: W&B runs marked failed on crash
+
+- **Files:** `verl/utils/tracking.py` (`Tracking.finish`), `verl/trainer/ppo/ray_trainer.py` (`fit` → `fit` wrapper + `_fit` loop).
+- **Problem:** `Tracking` called `wandb.init` and never `finish`. `fit` runs inside Ray's `main_task`, where Ray catches the exception before `sys.excepthook`, so wandb's crash hook never fired and a crashed run ended as finished (or stayed running).
+- **Fix:**
+  - `Tracking.finish(exit_code: int)` calls `wandb.finish(exit_code=exit_code)`. On installed wandb 0.31.0, `inspect.signature(wandb.finish)` is `(exit_code: int | None = None) -> None`, and its doc says "any other value marks the run as failed". Backends without a run to close (console, the mlflow adapter) are left alone.
+  - `fit` builds the tracker and calls `self._fit(logger)` in `try`. `except BaseException` calls `finish(exit_code=1)` and re-raises. A normal return, including the `val_only` early return, calls `finish(exit_code=0)`.
+  - The loop body moved unchanged into `_fit(self, logger)`, so no lines were re-indented.
+- **Tests (red-first, fake `wandb` in `sys.modules` via monkeypatch, no network):** `tests/deepretrieval/core/test_tracking.py`:
+  - `::test_finish_passes_the_exit_code_to_wandb`
+  - `::test_finish_without_wandb_backend_is_a_no_op`
+  - `::test_fit_marks_the_run_failed_and_reraises_when_training_crashes`
+  - `::test_fit_finishes_the_run_with_exit_code_zero_after_the_last_step`
+  - `::test_fit_finishes_the_run_with_exit_code_zero_after_validation_only`
+
+  The first two failed with `AttributeError: 'Tracking' object has no attribute 'finish'`; the three fit tests failed because no finish event was recorded.
+- **Behaviour impact:** a W&B run that crashes now shows as failed (exit 1) and the exception still propagates. A completed run is explicitly finished with exit 0.
+
+#### Item 12: mutation gaps (tests only; no bug found)
+
+- **Files (tests):** `tests/deepretrieval/rewards/test_ndcg.py`, `tests/deepretrieval/core/test_reward_metrics.py`.
+- **Tests added:**
+  - `test_ndcg.py::test_ndcg_accepts_a_zero_relevance_score`
+  - `::test_ndcg_rejects_a_negative_relevance_score` (exact AssertionError message)
+  - `::test_ndcg_with_all_zero_relevance_scores_zero` (0.0, a float, not NaN)
+  - `test_reward_metrics.py::test_reward_helper_rejects_a_2d_tensor[compute_answer_span_hit_ratios|compute_mean_ndcg|compute_sql_accuracy]`
+  - `::test_reward_helper_rejects_an_empty_tensor[...]` (exact ValueError message, including the shape)
+  - `::test_sql_reward_of_exactly_the_threshold_is_not_accurate`
+  - `::test_sql_reward_just_above_the_threshold_is_accurate` (`torch.nextafter`)
+
+  These pin existing behaviour. Their power to fail is shown by the mutation scores below.
+- **Mutation scores (before → after), from `mutate_check.py`:**
+  - `src/Lucene/utils.py::ndcg_at_k`: 10/15 → 14/15. All three line-38 survivors (all→any, >=→>, 0→1) and the line-42 survivor (`ideal_dcg > 0` → `>= 0`) are now killed.
+  - `compute_answer_span_hit_ratios`: 6/8 → 7/8. The guard's `or → and` is now killed.
+  - `compute_mean_ndcg`: 7/9 → 8/9. The guard's `or → and` is now killed.
+  - `compute_sql_accuracy`: 7/7 after. The before run is not a clean baseline, because the new tests were appended while it was running.
+
+  The three helpers now live in `verl/trainer/reward_registry.py` (item 15).
+
+  Remaining survivors, each argued equivalent:
+  - `ndcg_at_k` line 43, `ndcg <= 1.0 + 1e-9` → `<`: ndcg would have to equal exactly 1.000000001, but dcg ≤ ideal dcg holds up to about 1e-16 rounding.
+  - `compute_answer_span_hit_ratios`, `zip(..., strict=True)` → `False`: both lists come from the same `ANSWER_SPAN_HIT_MIN_REWARD` tuple, so their lengths always match.
+  - `compute_mean_ndcg`, `reward > NDCG_FORMAT_REWARD` → `>=`: a reward of exactly 0.1 adds 0.1 − 0.1 = 0 either way.
+- **Behaviour impact:** none.
+
+#### Item 6 (main_ppo part): sample dump through the logger
+
+- **Files:** `verl/trainer/main_ppo.py`. `print(sequences_str)` became `logger.info('%s', sequences_str)`. The missing-key `logger.warning` f-string was also converted to %-style args, as flagged by observability audit LOG001; its message is unchanged.
+- **Test (red-first):** `tests/deepretrieval/rewards/test_main_ppo.py::test_reward_manager_logs_examined_samples_at_info_instead_of_printing`. It failed with `assert [] == [(20, '<prompt><answer>q</answer>')]` while the code still printed.
+- **Behaviour impact:** the `num_examine` samples (validation: 1 per data_source per call) go to the `verl.trainer.main_ppo` logger at INFO instead of stdout. They show once `configure_logging()` sets verl loggers to INFO (the default).
+
+#### Item 7 (wiring part): configure_logging in the entry points
+
+- **Files:** `verl/trainer/main_ppo.py`. `configure_logging()` (from the other agent's `verl.utils.logging_utils`, present when wired) is now the first statement of `main` and of `main_task`, because Ray workers do not inherit the driver's logging config and rewards log from `main_task`.
+- **Tests (red-first):** `test_main_ppo.py::test_main_configures_logging_before_starting_ray` (event order `configure_logging`, then `ray.init`) and `::test_main_task_configures_logging_in_the_ray_worker_first` (via `main_task._function`). Both failed with `AttributeError: ... has no attribute 'configure_logging'`.
+- **Behaviour impact:** verl's INFO records, including the reward sample dump, now appear in the driver and in the Ray main_task.
+
+#### Verification
+
+- `cd code && uv run pytest -q` → `855 passed, 16 skipped` (random order). With `-p no:randomly` → `855 passed, 16 skipped`.
+- `uv run pytest -q -p randomly --randomly-seed=N tests/deepretrieval` for N in 1, 42, 1234, 31337, 98765 → `841 passed` for every seed.
+- `code/.venv/bin/pyright` (from the repo root) → `0 errors, 0 warnings, 0 informations`.
+- `uv run ruff check <touched files and test dirs> --select F,E9,B,I001` → `All checks passed!`. Two pre-existing findings in touched files were also fixed: the B028 `stacklevel=2` on tracking's deprecation warning, and F841 on the 3 unused locals in the moved `compute_reward_metrics_sql`.
+- `audit_tests.py tests/deepretrieval` → `clean: no findings`.
+- Observability audit on tracking.py, main_ppo.py and reward_registry.py: 1 finding, LOG008 on `PUBMED_API_KEY_PATH`. It is a false positive: the call logs the key file's path, never the key.
+- Coordinator follow-ups:
+  - `test_reward_manager_logs_examined_samples_at_info_instead_of_printing` no longer depends on record position. It filters the records to INFO records from `verl.trainer.main_ppo`.
+  - The pyright errors in the tests are fixed: the fake-wandb fixture returns an events list, and `main_task`'s undecorated function is reached through `vars(...)["_function"]`.
+- Note for other agents: `mutate_check.py` rewrites the source file in place while it runs. A suite run during the about 20 minutes it spent on `reward_registry.py` and `src/Lucene/utils.py` could have seen a mutant. Both files are restored (`git diff` matches the intended edits).
+
+## Part 7 write-up B
+
+
+#### Item 1: bare `except:` in screening.py
+
+- **File:** `code/verl/utils/reward_score/screening.py`, in `validate_criteria_design` (~line 179).
+- **Problem:** a bare `except:` wrapped `extract_json_from_llm_output(criteria_content)`. It also swallowed KeyboardInterrupt and SystemExit and turned them into `(False, None)`.
+- **Fix:** it is now `except (ValueError, RecursionError):`.
+  - `criteria_content` is always a `str` (a regex group), so `re.findall` cannot raise.
+  - The parser raises `ValueError('No JSON structure found.')`, or `json.JSONDecodeError` from `json.loads`. `json.JSONDecodeError` is a subclass of `ValueError`; I checked that with `issubclass`.
+  - `json.loads` also raises `RecursionError` on deeply nested model JSON.
+  - Every model output gets the same return value as before. Even an exception this handler misses would land in the function's outer `except Exception`, which also returns `(False, None)`.
+- **Tests:** new file `tests/deepretrieval/rewards/test_screening.py`.
+  - Four malformed inputs still return `(False, None)`: no braces, invalid JSON through the backup regex, invalid JSON in a fenced block, and 100k-deep nesting.
+  - Valid criteria return `(True, 2)`.
+  - KeyboardInterrupt and SystemExit raised by a monkeypatched parser now propagate. Before the fix these two tests failed with "DID NOT RAISE".
+- **Behaviour impact:** none for model output. Ctrl-C and SystemExit now get through. `validate_criteria_design` is not called by `compute_score` at present, because the call is commented out.
+
+#### Item 6: print to module logger (approved; changes console output)
+
+- **Files:** 23 files in `verl/utils/reward_score/`, all 5 files in `verl/utils/reward_score_dense/`, and `verl/utils/apis/{pubmed,ctgov}.py`.
+- **Problem:** 556 `print` calls outside `__main__` blocks, on the training hot path.
+- **Fix:** every module now has `logger = logging.getLogger(__name__)`, and `import logging` was added in sorted position where it was missing. The rules:
+  - **Calls:** every print became a logger call with %-style arguments. The `[Error]`/`[Warning]` prefixes and ANSI colour codes were dropped, since the log level now carries that information.
+  - **B17 handlers:** the f-string `logging.getLogger(__name__).exception(...)` calls became `logger.exception("... %r; scoring N", str(q)[:200])`. They still log at ERROR with a traceback.
+  - **`__main__` demo blocks** still use print.
+  - **Control flow is unchanged:** the same `if do_print:` gates, the same branches, the same return values, and the same `random.randint(1, 32)` / `(1, 16)` sampling.
+- **Levels:**
+  - **DEBUG** (per-rollout chatter):
+    - "Failed to locate model response header" and "No valid answer tags found"
+    - structure-validation lines and JSON-format notes
+    - "Error in evaluation" for malformed JSON
+    - pubmed / pmd_no_reason `Query: %s`
+    - Recall, Rank, NDCG and retrieved-result lines
+    - model-SQL execution errors and screening's criteria/evaluation notes
+  - **INFO:**
+    - The `do_print`-sampled sample dumps in `compute_score`, which the authors used for periodic inspection during training. Each run of consecutive prints became one multi-line record: "Solution string / Target", then "Final Score / Format / Answer / Total".
+    - msmarco "Loading index from %s", logged once.
+  - **WARNING:**
+    - "Pyserini/Faiss index not found" (logged at import)
+    - msmarco "Index not found ..., using prebuilt index"
+    - PubMed/CTGov "rate limit (10 req/s) reached"
+    - "Failed to import java_init" (with `exc_info`)
+    - "Gold SQL timed out on %s: %s"
+    - In `apis/`: "Retry %d times"; "... attempt i/n failed", which replaces the old print of the error plus a hand-formatted traceback and now passes `exc_info=True`; "Error parsing paper"/"Error parsing XML" (with `exc_info`); "Error fetching abstracts ... HTTP %s".
+- **Tests:**
+  - New file `tests/deepretrieval/rewards/test_reward_logging.py`, which covers pubmed with a stubbed search API, nq_serini, sparse scifact, dense fever and bird:
+    - A malformed answer gives a DEBUG "No valid answer tags found" record from the module's own logger.
+    - A sampled rollout writes nothing to stdout (checked with capsys).
+    - A sampled rollout gives an INFO record containing "Total: <score>".
+    - An unsampled rollout logs nothing at INFO or above.
+    - The pubmed/pmd_no_reason query is logged at DEBUG with its exact text and is not written to stdout.
+    - A missing java_init logs WARNING, and so does a missing index.
+    - An AST check finds no `print(` outside `__main__` in all 30 files.
+  - `test_apis.py` gained four tests:
+    - a PubMed retry logs WARNING
+    - a failed attempt logs WARNING with the ConnectionResetError traceback
+    - a CTGov retry logs WARNING
+    - retries write nothing to stdout
+  - `test_sql.py`: the gold-timeout test now checks for exactly one WARNING record through caplog instead of reading stdout.
+  - All of these were seen failing for the right reason before the change: prints on stdout and no log records.
+- **Observability audit** (`verl/utils/reward_score verl/utils/reward_score_dense verl/utils/apis`):
+  - Before: `237 finding(s) [LOG001:21, LOG004:216]`. My own AST count was 556 prints outside `__main__`; the audit counts fewer.
+  - After: `no findings` (exit 0).
+- **Behaviour impact at the default config** (`verl` logger at INFO, root at WARNING):
+  - **No longer on the console:**
+    - every `Query: ...` line, which was printed on every pubmed rollout
+    - every "[Error] No valid answer tags found", "Failed to locate model response header", "Error in evaluation" and structure-validation line
+    - Recall, Rank and NDCG lines
+    - model-SQL error lines
+    - the full traceback text that apis used to print as a second line
+  - **Still on the console:**
+    - the 1-in-32 (bird and spider: 1-in-16) sampled dumps, now at INFO. Each block is one record with a logging prefix instead of several bare lines.
+    - "Loading index", at INFO
+    - every WARNING listed above. The API failure warnings now carry a standard traceback through `exc_info`.
+    - B17 ERROR tracebacks
+  - **To see the old per-rollout chatter:** set `verl.utils.reward_score` (or a single module's logger) to DEBUG.
+  - **Caveat:** these records only reach the console if the reward runs in a process where the `verl` logger has a handler. Reward computation runs in the driver process, so this holds once the main session configures logging.
+
+#### Verification
+
+- `uv run pytest -q`: `841 passed, 16 skipped`.
+- pyright: `2 errors`. Both are in other agents' files: `tests/deepretrieval/core/test_split_asserts.py:70` and `tests/deepretrieval/core/test_tracking.py:19`. Files I touched have 0 errors.
+- ruff (`--select F,E9,B,I001`) on everything I touched: the only finding is `verl/utils/apis/ctgov.py:74:21 F841 total_count`, which is already in HEAD.
+- pytest-expert audit of `tests/deepretrieval`: `clean: no findings`.
+
+## Part 7 write-up C
+
+
+All paths are relative to `code/`. Every fix was written test-first: the test ran and failed for the expected reason before the code changed.
+
+#### Item 7: importing verl configured logging (LOG005), approved behaviour change
+
+- **Files:** `verl/__init__.py`, `verl/utils/logging_utils.py`, `verl/trainer/main_generation.py`, `verl/trainer/main_eval.py`, `verl/trainer/fsdp_sft_trainer.py`
+- **Problem:** `import verl` called `logging.basicConfig(level=WARNING)`. That put a stderr handler on the root logger of any process that imported verl, overriding the host application's logging.
+- **Fix:**
+  - Removed the call made at import time.
+  - Deleted `set_basic_config`. A grep of the whole repo found no other caller.
+  - Added `configure_logging(level: int | str | None = None)`:
+    - If the root logger has no handlers, it adds one stderr `StreamHandler` with the existing format `'%(levelname)s:%(asctime)s:%(message)s'` and sets root to WARNING.
+    - If root already has handlers (Hydra's `@hydra.main` job logging, or a host application), the handlers and the root level are left as they are.
+    - Either way, the `verl` and `__main__` loggers are set to `level`. The default is `$VERL_LOGGING_LEVEL`, else INFO. `__main__` is included because `python -m verl.trainer.x` names the entry module's logger `__main__`, which is outside the `verl` tree.
+    - The handler goes on root only, and module loggers propagate to it, so each record prints once. Calling it a second time adds no handler. It uses no `dictConfig`, so LOG010 does not apply.
+  - `main()` in main_generation, main_eval and fsdp_sft_trainer now calls `configure_logging()` as its first statement.
+- **Tests:** `tests/deepretrieval/core/test_logging_config.py` (12 tests):
+  - A subprocess runs `import verl` and the root logger has 0 handlers at WARNING.
+  - Default levels: root WARNING, verl INFO.
+  - `VERL_LOGGING_LEVEL` is honoured, and an explicit level overrides it.
+  - `__main__` gets the verl level.
+  - Two calls leave one handler.
+  - A record is emitted once, with the verl prefix (checked with capsys).
+  - Third-party INFO is suppressed.
+  - A root logger configured by the host is left alone.
+  - An AST check that each of the three entry points calls `configure_logging()` first.
+- **Behaviour impact:**
+  - A process that imports verl but never calls `configure_logging` (for example a Ray worker, until the other agent wires `main_task`) now prints WARNING and above through Python's last-resort handler: bare message, no level or time prefix.
+  - Under Hydra nothing changes: Hydra already replaced the root handlers.
+  - verl INFO records now appear wherever the entry point configures logging.
+
+#### Item 8: errors logged without tracebacks (LOG006)
+
+- **Files:** `download_datasets.py` (lines 49, 106, 144), `upload_datasets.py` (lines 46, 135), `verl/utils/hdfs_io.py` (line 130)
+- **Fix:**
+  - The five `logger.error(f"...: {e!s}")` calls became `logger.exception("...", arg)` with %-style arguments. The exception text now comes from the traceback.
+  - hdfs_io now uses `logger.warning("copy %s %s failed", ..., exc_info=True)`, so it stays at WARNING.
+  - Removed the unused `as e`.
+  - Return values are unchanged.
+- **Tests:**
+  - `tests/deepretrieval/evals/test_logged_tracebacks.py` covers all 5 script sites.
+  - `tests/deepretrieval/core/test_hdfs_io_logging.py` covers the hdfs_io site.
+  - Each asserts that `record.exc_info` is set and that the return value is unchanged.
+- **Behaviour impact:** the log now carries a traceback. The one-line message no longer repeats the exception text, which is in the traceback.
+
+#### Item 9: swallowed failures in the baseline generation scripts (LOG007)
+
+- **Files (12):**
+  - `src/eval/BM25/baselines/model_generate/{claude,gpt,model_generate,post_process}.py`
+  - `src/eval/Dense/baselines/model_generate{,_no_reasoning}/{model_generate.py, msmarco_subset/model_generate.py, post_process/{claude,gpt}.py}`
+- **The brief did not match the code.**
+  - In claude.py and gpt.py the retry loop already printed each failure with `print(e)`, but without a traceback or the attempt number.
+  - Every other LOG007 site in these files is a deliberate fallback, not a dropped API call:
+    - a missing `target` column falls back to `label`, and a missing `qid` column to the row index
+    - a missing `"\nAssistant:"` marker falls back to splitting on `"\nassistant:"`
+    - an answer that is not JSON falls back to the raw answer text
+    - post_process falls back to the raw generated text when no query can be parsed
+- **Fix (control flow unchanged: same 10 retries, same `""` and raw-text fallbacks):**
+  - The API retry now logs `logger.warning("API call failed for qid %s (attempt %d/10)", qid, attempts, exc_info=True)`, replacing `print(e)`.
+  - Column fallbacks log at INFO.
+  - Parse fallbacks (marker case, JSON) log at DEBUG with `exc_info`.
+  - The post_process raw-text fallback logs at WARNING with the key and `exc_info`. Keeping the raw text changes the retrieval query, so it is worth seeing.
+  - Each file has a module logger. `logging.basicConfig(INFO)` is called inside `main()` or the `__main__` block of the claude, gpt and model_generate scripts.
+  - The post_process scripts have no main guard, so they get no basicConfig (it would be LOG005). Their WARNINGs print through Python's last-resort handler.
+- **Tests:** `tests/deepretrieval/evals/test_model_generate_logging.py` (10 tests). It uses `_loader.stub_modules` and `load_script`, and runs the claude and gpt scripts as `__main__`.
+  - claude and gpt: 2 failures then success give WARNINGs for attempts [1, 2] with ConnectionError `exc_info`, and the saved output is unchanged. Exhausted retries give 10 warnings and `""`.
+  - model_generate (BM25, Dense, msmarco_subset): JSON fallback at DEBUG with `exc_info`. Column fallbacks and the marker-case fallback are each logged.
+  - post_process (BM25, Dense, Dense no_reasoning): one WARNING for the raw key, and the JSON key is still parsed.
+- **Behaviour impact:**
+  - API failures now go to stderr through logging, with a traceback, instead of stdout through print.
+  - Outputs are byte-identical.
+
+#### Item 10: calls on the root logger (LOG002)
+
+- **Files:** `verl/single_controller/base/worker_group.py` (line 92), `verl/utils/rendezvous/ray_backend.py` (5 calls)
+- **Fix:** added a module `logger = logging.getLogger(__name__)` and switched to %-style arguments. The messages are the same text. One quirk: the `"... alive" + " sending..."` concatenation in worker_group was merged into a single string.
+- **Tests:** `tests/deepretrieval/core/test_module_loggers.py` (4 tests).
+  - worker_group: `check_workers_alive`, with `raise_signal` patched to raise a sentinel exception.
+  - ray_backend: duplicate actors, a missing actor, and the retry info. cupy is stubbed.
+  - Each test asserts `record.name` is the module name.
+- **Behaviour impact:**
+  - The records now carry the module's name instead of `root`.
+  - They now inherit the `verl` logger's level, so with `configure_logging()` the rendezvous INFO records become visible.
+
+#### Item 2: BM25 recall summary hidden behind `except Exception: continue`
+
+- **Files:** `src/eval/BM25/{nq,squad,triviaqa}.py` and `{nq,squad,triviaqa}_base.py`
+- **Finding:** the summary is a running total printed inside the loop, after each batch or item. It is not a final summary.
+  - A failed query appends 0, so "no successful queries" gives Recall 0.0. It does not give empty lists.
+  - The lists are empty only when nothing has been scored yet (an empty batch).
+  - In the `_base` scripts the `except` could not fire at all.
+- **Fix:**
+  - Added `print_recall_summary(r1, r5, r20, r100)`. It asserts the four lists have equal length, which is a programmer-error invariant. It prints `Recall: no queries scored` when they are empty, and otherwise the same four lines as before.
+  - The try/except became a call to this function. The removed `continue` was the last statement in the loop body, so control flow is the same.
+- **Tests:** `tests/deepretrieval/evals/test_bm25_recall_summary.py` (13 tests). `load_function` compiles only the helper, so pyserini is not imported.
+  - Empty lists print the message, for all 6 scripts.
+  - Non-empty lists print the same numbers as before, for all 6 scripts.
+  - Lists out of step raise AssertionError.
+- **Behaviour impact:** an empty run now prints a message instead of nothing. The numbers are identical otherwise.
+- **Not fixed (not in the approved list):** `src/eval/baselines/evidence_gpt_claude{,_no_reason}.py` around lines 259 and 261 have the same pattern.
+
+#### Item 3: compound asserts (NSP004)
+
+- **Split:** 12 asserts.
+  - `verl/protocol.py` line 265
+  - `verl/single_controller/base/decorator.py` lines 84, 94, 177, 199, 260, 262
+  - `verl/utils/model.py` lines 158, 159, 167
+  - `verl/utils/seqlen_balancing.py` line 197
+  - `verl/utils/torch_functional.py` line 429
+- **Fix:** each `assert a and b` became two asserts whose messages name the half that broke and the values involved. The conditions and exception type are the same.
+- **Skipped (not my files):** 3 remaining findings.
+  - `verl/models/llama/megatron/checkpoint_utils/llama_loader.py` line 284 (megatron)
+  - `verl/third_party/vllm/vllm_v_0_3_1/model_runner.py` line 98
+  - `verl/third_party/vllm/vllm_v_0_4_2/model_runner.py` line 119
+- **Suspected upstream bug, not changed:** `model.py` line 167 checks `max_ratio_of_valid_token <= sequence_length`. A ratio compared with a length is almost certainly meant to check something else. I kept the condition and only split it.
+- **Tests:** `tests/deepretrieval/core/test_split_asserts.py` (11 characterisation tests). Each raises AssertionError with a message naming the broken half.
+  - the `DataProto` non_tensor dtype check
+  - `dispatch_dp_compute`: wrong type, wrong length for a positional arg, wrong length for a kwarg, and well-formed arguments passing through
+  - `create_random_mask`: the valid-ratio and padding-ratio bounds
+  - the cosine schedule's `min_lr_ratio` bounds
+
+#### Item 14: pytest-randomly
+
+- **Change:** `uv add --dev pytest-randomly` installed 5.0.0 into the `dev` group (`pyproject.toml`, `uv.lock`).
+- **Order is now random by default:** the plugin is on for every plain `pytest` run, and each run prints its seed in the header. To get a fixed order, pass `-p no:randomly`.
+- **Interaction with `tests/conftest.py::_seed_rngs`:**
+  - pytest-randomly reseeds `random` and `numpy` in its `pytest_runtest_call` hook. That runs after fixture setup, so for those two RNGs it overrides conftest's `seed(0)`.
+  - The per-test seed is derived from `--randomly-seed` and the test's node id, so it is reproducible.
+  - `torch` stays seeded at 0 by conftest.
+  - No test failed because of this across the 5 seeds.
+  - If seed 0 must be kept everywhere, add `--randomly-dont-reset-seed` to `addopts`. The cost is that `-p no:randomly` would then fail on an unknown option.
+- **Seed runs:** see the final report.
+
+#### Audit counts for my paths (observability audit, before → after)
+
+| Code | Before | After |
+|---|---|---|
+| LOG002 | 6 | 0 |
+| LOG005 | 1 | 0 |
+| LOG006 | 6 | 0 |
+| LOG007 | 33 | 4 |
+
+- The 4 remaining LOG007 findings are `src/sql/{bird,spider}.py`, which I do not own, and `evidence_gpt_claude{,_no_reason}.py`, which were not approved.
+- Some LOG007 findings were removed with documented `# obs: allow LOG007 <reason>` markers rather than code changes, at deliberate skips and fallbacks:
+  - `worker_group.py` and `ray/base.py`: the instance-only `AttributeError` skip
+  - `hdfs_io.py`: `SameFileError`
+- `logging_utils.py` carries a documented `# obs: allow LOG003` marker, because `configure_logging` touches the root logger on purpose.

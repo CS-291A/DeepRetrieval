@@ -247,13 +247,7 @@ def evaluate_model(model, tokenizer, data_path, device, model_name, save_dir, ba
                 print(f"Generated text: {generated_text[:200]}...")  # Print first 200 chars for debugging
                 continue
             
-        try:
-            print(f"Recall@1: {sum(recall_at_1) / len(recall_at_1)}")
-            print(f"Recall@5: {sum(recall_at_5) / len(recall_at_5)}")
-            print(f"Recall@20: {sum(recall_at_20) / len(recall_at_20)}")
-            print(f"Recall@100: {sum(recall_at_100) / len(recall_at_100)}")
-        except Exception:
-            continue
+        print_recall_summary(recall_at_1, recall_at_5, recall_at_20, recall_at_100)
     
     with open(os.path.join(save_dir, f"{model_name}_generations.json"), 'w') as f:
         json.dump(generated_text_list, f, indent=2)
@@ -261,6 +255,19 @@ def evaluate_model(model, tokenizer, data_path, device, model_name, save_dir, ba
     print("Error count: ", error_count)
     
     
+def print_recall_summary(recall_at_1, recall_at_5, recall_at_20, recall_at_100):
+    """Print the running Recall@k; report an empty run instead of dividing by zero."""
+    assert len(recall_at_1) == len(recall_at_5) == len(recall_at_20) == len(recall_at_100), \
+        "recall lists out of step: every scored query appends to all of them"
+    if not recall_at_1:
+        print("Recall: no queries scored")
+        return
+    print(f"Recall@1: {sum(recall_at_1) / len(recall_at_1)}")
+    print(f"Recall@5: {sum(recall_at_5) / len(recall_at_5)}")
+    print(f"Recall@20: {sum(recall_at_20) / len(recall_at_20)}")
+    print(f"Recall@100: {sum(recall_at_100) / len(recall_at_100)}")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_path", type=str, default="/shared/eng/pj20/lmr_model/nq_serini_3b/actor/global_step_400")

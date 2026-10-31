@@ -28,6 +28,8 @@ from verl.single_controller.base.decorator import (
     get_predefined_execute_fn,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class ResourcePool:
 
@@ -89,7 +91,7 @@ def check_workers_alive(workers: list, is_alive: Callable, gap_time: float = 1) 
     while True:  # nsp: ignore NSP005 deliberate monitor loop for the driver's lifetime; runs in its own thread
         for worker in workers:
             if not is_alive(worker):
-                logging.warning(f"worker {worker} is not alive" + " sending signal to main thread")
+                logger.warning("worker %s is not alive sending signal to main thread", worker)
                 signal.raise_signal(signal.SIGABRT)
         time.sleep(gap_time)
 
@@ -149,7 +151,7 @@ class WorkerGroup:
 
             try:
                 method = getattr(user_defined_cls, method_name)
-            except AttributeError:  # nsp: ignore NSP007 instance-only attributes are not worker methods; skip them
+            except AttributeError:  # nsp: ignore NSP007 instance-only attributes are not worker methods; skip them  # obs: allow LOG007 skipping instance-only attributes is the intended outcome
                 # descriptors that only resolve on instances raise AttributeError on class access
                 continue
             if not callable(method):

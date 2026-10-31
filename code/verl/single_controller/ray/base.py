@@ -393,7 +393,7 @@ def _bind_workers_method_to_parent(cls, key, user_defined_cls):
     for method_name in dir(user_defined_cls):
         try:
             method = getattr(user_defined_cls, method_name)
-        except AttributeError:  # nsp: ignore NSP007 instance-only attributes are not worker methods; skip them
+        except AttributeError:  # nsp: ignore NSP007 instance-only attributes are not worker methods; skip them  # obs: allow LOG007 skipping instance-only attributes is the intended outcome
             # descriptors that only resolve on instances raise AttributeError on class access
             continue
         if not callable(method):

@@ -19,9 +19,6 @@ version_folder = os.path.dirname(os.path.join(os.path.abspath(__file__)))
 with open(os.path.join(version_folder, 'version/version')) as f:
     __version__ = f.read().strip()
 
-import logging
-
 from .protocol import DataProto
-from .utils.logging_utils import set_basic_config
 
-set_basic_config(level=logging.WARNING)
+# Logging is configured by entry points (verl.utils.logging_utils.configure_logging), never on import.

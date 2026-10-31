@@ -1,6 +1,9 @@
 import json
+import logging
 import random
 import re
+
+logger = logging.getLogger(__name__)
 
 
 def extract_solution(solution_str):
@@ -12,12 +15,12 @@ def extract_solution(solution_str):
         if len(splits) >= 3:
             processed_str = splits[2].strip()
         else:
-            print("[Error] Failed to locate second Assistant: marker")
+            logger.debug('Failed to locate second Assistant: marker')
             return None, solution_str
     # elif "<|im_start|>assistant" in solution_str:
     #     processed_str = solution_str.split("<|im_start|>assistant", 1)[1].strip()
     else:
-        print("[Error] Failed to locate model response header")
+        logger.debug('Failed to locate model response header')
         return None, ""
 
     # Regular expression to find the last occurrence of <answer>...</answer>
@@ -27,7 +30,7 @@ def extract_solution(solution_str):
     if matches:
         return matches[-1].strip(), processed_str  # Return the last matched answer
     else:
-        print("[Error] No valid answer tags found")
+        logger.debug('No valid answer tags found')
         return None, processed_str
 
 
@@ -41,7 +44,7 @@ def validate_response_structure(processed_str: str, do_print: bool) -> bool:
         Boolean indicating whether all formatting requirements are met
     """
     if do_print:
-        print("\n[Structure Validation]")
+        logger.debug('[Structure Validation]')
     validation_passed = True
 
     # Check required tags
@@ -60,11 +63,11 @@ def validate_response_structure(processed_str: str, do_print: bool) -> bool:
         positions[tag_name] = pos = processed_str.find(tag_str)
         
         if do_print:
-            print(f"  {tag_str}: count={count}, position={pos}")
+            logger.debug('%s: count=%s, position=%s', tag_str, count, pos)
         
         if count != expected_count:
             if do_print:
-                print(f"  [Error] {tag_str} appears {count} times (expected {expected_count})")
+                logger.debug('%s appears %s times (expected %s)', tag_str, count, expected_count)
             validation_passed = False
 
     # Verify tag order
@@ -74,11 +77,11 @@ def validate_response_structure(processed_str: str, do_print: bool) -> bool:
         positions['think_end'] > positions['answer_start'] or
         positions['answer_start'] > positions['answer_end']):
         if do_print:
-            print("  [Error] Incorrect tag order: Expected <criteria>...</criteria><think>...</think><answer>...</answer>")
+            logger.debug('Incorrect tag order: Expected <criteria>...</criteria><think>...</think><answer>...</answer>')
         validation_passed = False
     else:
         if do_print:
-            print("  Tag sequence validation passed")
+            logger.debug('Tag sequence validation passed')
     
     return validation_passed
 
@@ -143,14 +146,14 @@ def calculate_answer_score(answer_text, label, criteria_length, do_print=False):
         #TODO direct (overall prediction) label reward
         
         if do_print:
-            print(f"Average evaluation score: {avg_score}")
-            print(f"Final answer score after label multiplication: {answer_score}")
+            logger.debug('Average evaluation score: %s', avg_score)
+            logger.debug('Final answer score after label multiplication: %s', answer_score)
             
         return answer_score
 
     except Exception as e:
         if do_print:
-            print(f"[Error] Error in evaluation: {e!s}")
+            logger.debug('Error in evaluation: %s', e)
         return -1.5
 
 
@@ -167,7 +170,7 @@ def validate_criteria_design(processed_str, do_print=False):
         criteria_match = re.search(criteria_pattern, processed_str, re.DOTALL)
         if not criteria_match:
             if do_print:
-                print("[Error] No criteria section found")
+                logger.debug('No criteria section found')
             # errors.append("missing_criteria_content")
             return False, None
             
@@ -176,16 +179,18 @@ def validate_criteria_design(processed_str, do_print=False):
         try:
             # Find JSON in criteria section
             criteria_json = extract_json_from_llm_output(criteria_content)
-        except:
+        # Malformed model JSON: ValueError covers json.JSONDecodeError (a subclass) and the
+        # parser's own 'No JSON structure found'; json.loads raises RecursionError on deep nesting.
+        except (ValueError, RecursionError):
             if do_print:
-                print("[Error] Failed to parse JSON in criteria section")
+                logger.debug('Failed to parse JSON in criteria section')
             # errors.append("invalid_json")
             return False, None
         
         # Validate criteria
         if not isinstance(criteria_json, dict):
             if do_print:
-                print("[Error] Criteria not in JSON format")
+                logger.debug('Criteria not in JSON format')
             # errors.append("not_json_dict")
             return False, None
             
@@ -195,7 +200,7 @@ def validate_criteria_design(processed_str, do_print=False):
         
         if criteria_length < 2:
             if do_print:
-                print("[Error] Too few criteria (<2)")
+                logger.debug('Too few criteria (<2)')
             # errors.append("too_few_criteria")
             return False, criteria_length
         
@@ -203,14 +208,14 @@ def validate_criteria_design(processed_str, do_print=False):
         # Check number of criteria
         if criteria_length > 7:
             if do_print:
-                print("[Error] Too many criteria (>7)")
+                logger.debug('Too many criteria (>7)')
             # errors.append("too_many_criteria")
             return False, criteria_length
             
         # Check uniqueness
         if len(set(criteria)) != criteria_length:
             if do_print:
-                print("[Error] Criteria not unique")
+                logger.debug('Criteria not unique')
             # errors.append("duplicate_criteria")
             return False, criteria_length
             
@@ -219,7 +224,7 @@ def validate_criteria_design(processed_str, do_print=False):
             token_count = len(criterion.split())
             if token_count < 2 or token_count > 30:
                 if do_print:
-                    print(f"[Error] Criterion token count ({token_count}) outside limits: {criterion}")
+                    logger.debug('Criterion token count (%s) outside limits: %s', token_count, criterion)
                 # errors.append("token_limit")
                 return False, criteria_length
                 
@@ -227,7 +232,7 @@ def validate_criteria_design(processed_str, do_print=False):
         
     except Exception as e:
         if do_print:
-            print(f"[Error] Error validating criteria: {e!s}")
+            logger.debug('Error validating criteria: %s', e)
         # errors.append("general_error")
         return False, None
 
@@ -257,9 +262,7 @@ def compute_score(solution_str, ground_truth):
         format_score = -2
 
     if do_print:
-        print("--------------------------------")
-        print(f"Solution string: {solution_str}")
-        print(f"Target: {label!s} |")
+        logger.info('--------------------------------\nSolution string: %s\nTarget: %s |', solution_str, label)
 
     # Calculate answer score
     answer_score = 0
@@ -271,11 +274,7 @@ def compute_score(solution_str, ground_truth):
     total_score = format_score + answer_score
 
     if do_print:
-        print("\n" + "-"*80)
-        print(" Final Score ".center(80, '-'))
-        print(f"  Format: {format_score}")
-        print(f"  Answer: {answer_score}")
-        print(f"  Total: {total_score}")
-        print("="*80 + "\n")
+        logger.info('\n%s\n%s\n  Format: %s\n  Answer: %s\n  Total: %s\n%s', "-" * 80, " Final Score ".center(80, '-'),
+                    format_score, answer_score, total_score, "=" * 80)
 
     return total_score

@@ -53,3 +53,21 @@ def test_ndcg_list_target_without_scores_uses_binary_relevance():
 
 def test_ndcg_nothing_relevant_retrieved_scores_zero():
     assert ndcg_at_k(["x", "y"], ["a", "b"], 10, rel_scores=[1, 1]) == pytest.approx(0.0)
+
+
+def test_ndcg_accepts_a_zero_relevance_score():
+    # 'b' is judged but not relevant: ranking it first pushes 'a' (score 1) to rank 2.
+    assert ndcg_at_k(["b", "a"], ["a", "b"], 10, rel_scores=[1, 0]) == pytest.approx(1 / 1.584962500721156)
+
+
+def test_ndcg_rejects_a_negative_relevance_score():
+    with pytest.raises(AssertionError, match=r"^relevance scores must be non-negative$"):
+        ndcg_at_k(["a"], ["a", "b"], 10, rel_scores=[1, -1])
+
+
+def test_ndcg_with_all_zero_relevance_scores_zero():
+    # ideal DCG is 0: the result must be 0.0, not 0/0 = NaN (which would also trip the range assertion).
+    result = ndcg_at_k(["a", "b"], ["a", "b"], 10, rel_scores=[0, 0])
+
+    assert result == pytest.approx(0.0)
+    assert isinstance(result, float)
