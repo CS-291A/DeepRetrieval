@@ -1,10 +1,13 @@
-export CUDA_VISIBLE_DEVICES=1,2
+#!/bin/sh
+# common.sh: loads code/.env, defaults DEEPRETRIEVAL_DATA_DIR, creates exp_log/, cd code/.
+# GPUs: all visible ones are used; export CUDA_VISIBLE_DEVICES first to restrict them.
+. "$(dirname "$0")/../common.sh" || exit 1
 
 DATE=$(date '+%Y-%m-%d-%H-%M-%S')
 
 python3 -m verl.trainer.main_ppo \
-    data.train_files=data/search_engine/pubmed/train.parquet \
-    data.val_files=data/search_engine/pubmed/test.parquet \
+    data.train_files="$DEEPRETRIEVAL_DATA_DIR"/search_engine/pubmed/train.parquet \
+    data.val_files="$DEEPRETRIEVAL_DATA_DIR"/search_engine/pubmed/test.parquet \
     data.train_batch_size=64 \
     data.val_batch_size=64 \
     data.max_prompt_length=500 \
@@ -35,4 +38,4 @@ python3 -m verl.trainer.main_ppo \
     trainer.experiment_name=pubmed_search \
     actor_rollout_ref.model.path=Qwen/Qwen2.5-3B-Instruct \
     critic.model.path=Qwen/Qwen2.5-3B-Instruct \
-    trainer.total_epochs=10 2>&1 | tee exp_log/3b-ppo-verl_demo_$DATE.log 
+    trainer.total_epochs=10 2>&1 | tee exp_log/3b-ppo-verl_demo_"$DATE".log 

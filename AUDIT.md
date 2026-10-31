@@ -1345,3 +1345,261 @@ All paths are relative to `code/`. Every fix was written test-first: the test ra
   - `worker_group.py` and `ray/base.py`: the instance-only `AttributeError` skip
   - `hdfs_io.py`: `SameFileError`
 - `logging_utils.py` carries a documented `# obs: allow LOG003` marker, because `configure_logging` touches the root logger on purpose.
+
+
+# Part 8 — GPU smoke test (Runpod A40) and follow-ups
+
+**Smoke test.** Runpod Secure Cloud, NVIDIA A40 48 GB, EU-SE-1, host CUDA 13.2. It cost about $0.12 (≈11 min at $0.59/hr), and the pod was terminated afterwards (read-back returned 404).
+- **Install:** `uv sync --extra gpu --extra retrieval` installed exactly the locked Linux stack: torch 2.4.0+cu121 with CUDA visible, vllm 0.6.3, flash-attn 2.6.3, xformers 0.0.27.post2, ray 2.59. verl selected `vllm_v_0_6_3`.
+- **Tests:** `pytest --ignore=tests/ray` gave 862 passed and 6 failed.
+  - 3 need ≥2 GPUs (they assert it).
+  - 3 failed from the Python-headers issue (S1) and pass after its fix.
+  - `tests/ray` needs 2–8 GPUs and was not run.
+- **PPO:** 3 configured steps with Qwen2.5-0.5B-Instruct on `pubmed_32`, using keyless PubMed rewards, console + offline W&B. Exit 0; steps 1–2 logged (critic vf_loss 12.07 → 10.90); W&B recorded `exitcode: 0` (Part 7, item 5, confirmed on real wandb).
+
+### S1 — Triton JIT needs Python.h: pin uv-managed CPython + preflight check
+- Problem: uv built the venv on the image's Debian system Python 3.10, which has no `python3.10-dev`. Triton 3.0.0 compiles a C helper at runtime (`triton/runtime/build.py`: `$CC`/gcc/clang plus `Python.h` from the default sysconfig scheme), so flash-attn's Triton cross-entropy failed with `fatal error: Python.h: No such file or directory`. That kernel is on the training path (`logprobs_from_logits`), so PPO would have crashed in step 1.
+- Fix:
+  - `[tool.uv] python-preference = "only-managed"`: the project selects its interpreter the way `uv.lock` selects packages, so it doesn't depend on the host image. Every uv-managed CPython ships headers.
+  - Rejected `apt install python3.10-dev` (host-specific, needs root, per-image) and `"managed"` (silently falls back to a system Python, which reintroduces the bug).
+  - Defence in depth: `verl/utils/toolchain.py::require_triton_toolchain()` mirrors Triton's lookup and fails at startup with the remedy. It is called in `main_ppo.main` before `ray.init` and in `require_cuda` (every FSDP worker and `initialize_global_process_group`).
+- Verification:
+  - On the pod, rebuilding the venv on managed Python 3.10.22 put `Python.h` in place, and the 3 failing tests passed.
+  - Locally, `uv python find 3.13` picks uv's managed 3.13.2 over Homebrew's 3.13.12.
+- Tests: `tests/deepretrieval/core/test_triton_toolchain.py` (10, red first) and `test_main_ppo.py::test_main_checks_the_triton_toolchain_before_starting_ray` (red first).
+- Behaviour impact: none on a correct environment; a broken one fails at startup instead of mid-step.
+
+### Found by the smoke test (S2 and S3 fixed in Part 9)
+- **S2 — Ray under `uv run` hides gitignored `data/` from workers.** Ray 2.59 packages the working directory for workers when it detects `uv run`, honouring `.gitignore`, so relative `data/...` paths fail in `main_task`. `RAY_ENABLE_UV_RUN_RUNTIME_ENV=0` fixed it on the pod. To be resolved with the data-location work (setup script / data-dir configuration).
+- **S3 — keyless PubMed exceeds NCBI's 3 req/s.** `PubmedAPI` waits 0.2 s between requests; keyless allows 3/s. Three rate-limit responses were logged and retried, and training continued. A rate-limit error JSON surfaces as `KeyError: 'count'`.
+
+
+# Part 9 — Runpod setup: data on a network volume, .env, launchers (S2, S3)
+
+These were the user's decisions:
+- **Data:** download PubMed (`pubmed_32`) now, and have the data-dir setting honoured everywhere `data/` was used.
+- **Data location:** the env var `DEEPRETRIEVAL_DATA_DIR`. When it's unset, the default is `<code>/data`, resolved from the package location, so local runs are unchanged.
+- **Secrets:** read from the environment first; prompt only when missing.
+- **Scope:** the setup script runs on an existing pod with a network volume at `/workspace`; it doesn't provision the pod.
+
+| Area | Change |
+|---|---|
+| Data location | `verl/utils/paths.py` (`data_dir()`, `data_path()`). The hardcoded `data/...` paths in 143 Python files go through it; a missing file raises `FileNotFoundError` naming the path and the env var. The shell default in `scripts/common.sh` resolves to the same `<code>/data` (checked). Absolute author paths (`/home/pj20`, `/shared/eng/pj20`, …) are left unchanged and listed below |
+| SQL data | parquets keep the portable `data/raw_data/...` form; `reward_registry.sql_kwargs` re-roots it and raises on a missing database (sqlite used to create an empty one silently) |
+| PubMed key | `verl/utils/credentials.py`: `PUBMED_API_KEY`, then the key file (now found from any cwd), then keyless. Used by `RewardManager`, the 6 SearchEngine evals and `pubdate.py`. **Key-leak fix:** requests error messages contained `&api_key=...` and reached warning tracebacks; a log filter now masks it, and so does the raised error |
+| S3 rate limit | requests spaced ≥ 1/3 s without a key and ≥ 0.1 s with one (before: ~10 req/s either way). An NCBI error response is now retried with a readable message instead of `KeyError: 'count'` |
+| S2 Ray under `uv run` | `os.environ.setdefault("RAY_ENABLE_UV_RUN_RUNTIME_ENV", "0")` in `verl/__init__.py`. It has to come before Ray's constants module is imported, and importing `verl` imports Ray, so `main_ppo` would be too late. An explicit value is respected. Launchers and `.env` also set it |
+| Setup script | `code/scripts/setup_pod.sh`, idempotent:<br>• checks the GPUs first<br>• resolves secrets (environment, then existing `.env`, then a hidden prompt) and writes `code/.env` atomically with mode 600; secrets are never printed<br>• installs uv on the volume, clones or fast-forwards the repo, runs `uv sync --extra gpu --extra retrieval`<br>• keeps caches on the volume, including uv-managed Python (`UV_PYTHON_INSTALL_DIR`)<br>• downloads `pubmed_32` (or `--datasets`), then verifies the parquet files and the Triton toolchain<br>• flags: `--dry-run`, `--non-interactive`, `--require-pubmed-key`, `--force` |
+| Launchers | all 52 under `scripts/{train,eval}` source `scripts/common.sh` (POSIX sh: loads `.env` without overriding variables already set, sets defaults, creates `exp_log/`, cds to `code/`) and read `"$DEEPRETRIEVAL_DATA_DIR"/...`. **Every hardcoded `export CUDA_VISIBLE_DEVICES=...` is removed** (the old `4,7` breaks a 2-GPU pod); the environment decides. With `DEEPRETRIEVAL_DATA_DIR=data` the python arguments are byte-identical to before |
+| Docs | `code/.env.example`, README "Running on Runpod", CLAUDE.md |
+
+**Verification:**
+- `uv run pytest` → `1004 passed, 16 skipped`, also under seeds 1 and 42 (132 new tests).
+- bats `tests/shell` → 43/43 on bash 5.3 and on macOS bash 3.2 (43 new).
+- ShellCheck, shfmt and the bash-scripting audit are clean.
+- pyright → 0 errors.
+- **Not yet run on a real pod:** the mount check, the uv installer download, network git, and a real sync and download.
+
+## Part 9 write-up (py)
+
+
+Env vars the code reads: `DEEPRETRIEVAL_DATA_DIR`, `PUBMED_API_KEY`, `RAY_ENABLE_UV_RUN_RUNTIME_ENV` (only `setdefault` to `"0"`).
+
+Verification (from `code/`): `uv run pytest -q` → 1004 passed, 16 skipped (was 872/16; +132 new tests). Seeds 1 and 42 give the same result. Pyright reports 0 errors. Ruff (`F,E9,B,I001`) over all 169 touched `.py` files shows the same 36 findings as before the change and none new. All 36 are pre-existing F841/B905/B007, plus F401 in `verl/__init__.py`. The pytest-expert audit is clean.
+
+#### 1. `verl/utils/paths.py` (new)
+- **Problem:** every data path was a literal relative to the cwd, either `data/...` (cwd = `code/`) or `code/data/...` (cwd = repo root).
+- **Fix:**
+  - `DATA_DIR_ENV = "DEEPRETRIEVAL_DATA_DIR"`, `CODE_DIR`, `DEFAULT_DATA_DIR = CODE_DIR/"data"`.
+  - `data_dir()`: the env var if set and non-blank (`~` expanded, made absolute against the cwd), else `<code>/data` resolved from the file location.
+  - `data_path(*parts)`: rejects absolute parts and `..` escapes with ValueError, since those are programmer errors.
+  - `resolve_data_reference(stored)`: `data/...` / `./data/...` (the form stored in SQL parquets) is re-rooted under `data_dir()`; anything else is returned unchanged.
+  - `stored_data_reference(rel)` → `"data/<rel>"`.
+  - `require_existing(path, what)`: FileNotFoundError naming the resolved path, the env var and the default.
+- **Tests:** `tests/deepretrieval/core/test_paths.py`, 17 tests, red first (ImportError, then the two `stored_data_reference` tests failed with AttributeError). They cover set/unset, `~`, a relative env value, a blank value, the default being independent of the cwd (`monkeypatch.chdir`), the default equalling `Path("data").resolve()` with cwd = `code/`, round-trips, and the missing-file message.
+- **Hermeticity:** new `tests/deepretrieval/conftest.py` (autouse) clears `DEEPRETRIEVAL_DATA_DIR` and `PUBMED_API_KEY` for every test. The `load_reward_module` fixture now points the data dir at an empty tmp dir unless the test set it. It also gained `search_backend=` and `isolate_data_dir=` options. A developer's real `code/data` indexes are never opened.
+
+#### 2. Every hardcoded `data/...` → `data_path(...)`
+- **Files:** 143, converted by a codemod.
+  - `verl/utils/reward_score/{fever,fiqa,hotpotqa,msmarco_beir,nfcorpus,scifact}.py` and `verl/utils/reward_score_dense/{fever,hotpotqa,msmarco_beir,nfcorpus,scifact}.py`.
+  - `src/Lucene/*/{1_convert_format,search}.py`, `src/Dense/*/{1_convert_emb,2_build_index,search}.py`, `src/cold_start/sql/{generate_data,sft}.py`.
+  - All of `src/eval/{BM25,Dense,SearchEngine,SQL,baselines}/**` that had data literals.
+  - All of `data_preprocess/**` (inputs, `--local_dir` / `--output_dir` defaults, `sql_all.py`).
+  - `download_datasets.py --output_dir` and `upload_datasets.py --input_dir` (default `str(data_dir())`).
+- **Codemod rule:**
+  - `"data/X"`, `"./data/X"` and `"code/data/X"` (f-strings too) → `str(data_path("X"))`, so types stay `str`.
+  - `"./data"` → `str(data_dir())`.
+  - In the three `src/eval/baselines/*` files a local variable is named `data_path`, so they use `from verl.utils import paths` / `paths.data_path(...)`.
+  - In 33 `src/eval` scripts the import is placed after their `sys.path.insert/append` line.
+  - An AST pairing check (old literal vs new `data_path` argument, all 145 files) confirmed every replacement maps to the same relative path.
+- **Not converted on purpose:** SQL parquets store `extra_info.db_path`. `data_preprocess/{,no_reason/SQL/}{bird,spider}.py` now write `stored_data_reference(...)`, which is still `data/raw_data/...`, so parquets stay portable and match the already-published files. `reward_registry.sql_kwargs` resolves it with `resolve_data_reference` + `require_existing`. A missing database is an operating error: it raises FileNotFoundError naming the path and the env var, where before `sqlite3.connect` would silently create an empty DB. Schema reads in preprocessing use real `data_path` paths.
+- **Reward modules:** the index path is computed once (`INDEX_DIR` / `index_dir` / `output_dir`). The missing-index WARNING now names the resolved path and `$DEEPRETRIEVAL_DATA_DIR`. The existing fail-fast RuntimeError in `compute_score` is unchanged.
+- **Tests:**
+  - Guard, red first (438 offending literals): `core/test_data_paths_honour_data_dir.py::test_no_python_source_hardcodes_a_relative_data_path` AST-scans `verl src data_preprocess download_datasets.py upload_datasets.py`.
+  - Red first: SQL `db_path` resolution (3 tests) and download/upload defaults (4).
+  - Reward characterisation: `rewards/test_reward_index_paths.py`, 33 tests over the 11 reward modules. Unset → the module checks `<code>/<old literal>` from an unrelated cwd. Set → the backend is built with paths under the env dir. The warning names the path and the variable. These were red against the old code, which checked the relative literal.
+  - Script characterisation: `evals/test_script_data_paths.py`, 22 tests over 11 BM25/Dense eval scripts via `_loader.load_script`. Unset with cwd = `code/` → `abspath(old literal)` is the path checked, so this passes on both old and new code. A manual runpy check against the pre-change copies confirmed identical paths. Set → paths are under the env dir.
+  - Updated existing tests:
+    - `evals/test_msmarco_sub_preprocess.py`: sets the env var instead of relying on the cwd.
+    - `rewards/test_reward_routing.py`: `DB_PATH` is now an existing file.
+    - `rewards/test_reward_logging.py`: checks the warning prefix instead of the exact text.
+- **Behaviour impact:**
+  - Unset: identical files when run from `code/`, and now from any cwd.
+  - Scripts that used `code/data/...` (cwd = repo root) now work from any cwd.
+  - `src/Lucene/*/1_convert_format.py`, `src/Dense/*` and `src/cold_start/*` now import `verl`. That needs the editable install or cwd = `code/`. Note that on this Mac the editable `.pth` is not honoured outside `code/` (`python -c "import verl"` from `/tmp` fails), so run them from `code/` locally.
+
+#### 3. PubMed key from the environment
+- **Files:**
+  - new `verl/utils/credentials.py`: `PUBMED_API_KEY_ENV`, `DEFAULT_PUBMED_API_KEY_PATH` (package-resolved), and `load_pubmed_api_key(key_path=None)`. Order: env (non-blank), then key file (non-empty), then None.
+  - `verl/trainer/main_ppo.py` (RewardManager).
+  - the six `src/eval/SearchEngine/eval_{pubmed,pubmed_no_reason,pubmed_base,pubmed_reason,pubmed_no_reason_gpt,ctgov}.py` scripts.
+  - `data_preprocess/utils/pubdate.py`.
+- **Problem:** the key was only read from a key file, and the src/eval scripts found that file relative to the cwd.
+- **Fix:**
+  - The env var takes precedence over the file.
+  - In main_ppo, no key at all gives the existing keyless WARNING, which now names `$PUBMED_API_KEY` and the path.
+  - The eval scripts still refuse to run keyless (existing behaviour, already pinned by a test). Their FileNotFoundError now names both `$PUBMED_API_KEY` and the package path.
+  - `pubdate.py` keeps its keyless warning.
+  - The source of the key is logged at INFO; the key itself is never logged.
+- **Tests, red first:**
+  - `core/test_credentials.py` (11), including that logs show the source and not the key.
+  - `rewards/test_main_ppo.py` +4: env wins, env without file, warning names the var, key never logged.
+  - `evals/test_pubmed_key_env.py` (19): every eval script uses the env key; the package key file works from any cwd; no key → error naming both sources; `pubdate` uses the env key.
+  - Two existing tests now also redirect `DEFAULT_PUBMED_API_KEY_PATH`, so a developer's real key file cannot affect them.
+- **Behaviour impact:** the file fallback is unchanged. The eval scripts now find the key file from any cwd.
+
+#### 4. S3: PubMed rate limit and NCBI error JSON (`verl/utils/apis/pubmed.py`)
+- **Verified first:** the old default was `request_delay=0.2` for both keyed and keyless clients. The sleep came after each batch, summary and efetch request but not after the count request, so count and the first batch went out back to back. That is about 10 req/s, against NCBI's 3/s keyless limit. An error JSON then hit `KeyError: 'count'`.
+- **Fix:**
+  - `request_delay=None` defaults to `KEYLESS_REQUEST_DELAY = 1/3 + 0.01` without a key and `KEYED_REQUEST_DELAY = 0.1 + 0.01` with one. An explicit value is honoured, for tests or a raised NCBI quota.
+  - One thread-safe throttle (`_get`) spaces the *start* of every request, using an injected `clock` / `sleep` (defaults `time.monotonic` / `time.sleep`). Retry backoff also uses the injected sleep.
+  - `_check_ncbi_payload` raises `ConnectionError("PubMed search|summary returned an error: <text>")` on `{"error": ...}` payloads for count, batch and esummary responses. The existing retry loop then logs it at WARNING.
+  - The final error is now `RuntimeError("A Pubmed API error occurred: <type>: <text>")`.
+  - New: requests error messages contain the full URL, including `&api_key=`. A module log filter redacts `api_key=***` from messages and tracebacks; `exc_info` is kept, which an existing test pins. The raised error text is redacted the same way.
+- **Tests, red first:** `rewards/test_pubmed_rate_limit.py`, 13 tests using autospec'd `requests.get`, a fake clock and no real sleeps. They cover:
+  - the delay floors for keyless and keyed clients, and that an explicit delay is honoured;
+  - gaps of at least 1/3 s (keyless) and 0.1 s (keyed) across count + batch + the next search, with no wait before the first request;
+  - error JSON retried, then success; a persistent error raises with the NCBI text; errors in batch and summary responses;
+  - backoff through the injected sleep;
+  - the key absent from logs and from the error, including a transport error whose message contains the URL.
+- **Behaviour impact:** a keyless search (2 requests) now takes about 0.69 s instead of about 0.2 s. That is slower but within NCBI's limit. Setting `PUBMED_API_KEY` brings it to about 0.22 s.
+
+#### 5. S2: Ray under `uv run`
+- **Verified:** `ray/_private/ray_constants.py:740` reads `RAY_ENABLE_UV_RUN_RUNTIME_ENV = env_bool("RAY_ENABLE_UV_RUN_RUNTIME_ENV", True)` once at import, and `ray/_private/worker.py:1421` consults the constant in `init`.
+- **Deviation from the brief:** `verl/__init__.py` imports `.protocol`, which imports `ray`. Because `python -m verl.trainer.main_ppo` and `import verl.trainer.main_ppo` both run `verl/__init__` first, a setdefault in the main_ppo body runs after ray is already imported, which is too late.
+- **Fix:**
+  - `os.environ.setdefault("RAY_ENABLE_UV_RUN_RUNTIME_ENV", "0")` as the first statement of `verl/__init__.py`, with a comment.
+  - A comment in main_ppo points there.
+  - This covers main_ppo, main_generation and every other entry point. Workers inherit the variable through the raylet environment.
+- **Tests:** `core/test_ray_uv_runtime_env.py`, 5 tests:
+  - an `inspect` source check;
+  - fresh-interpreter probes printing `False` after importing `verl.trainer.main_ppo`, `verl.trainer.main_generation` or `verl` with the variable unset. These 3 were red first.
+  - an explicit `"1"` is respected (`True`).
+- **Behaviour impact:** gitignored `data/` is visible to workers again. All data paths are absolute now in any case.
+
+#### Absolute author paths left unchanged (not portable; out of scope)
+- `data_preprocess/utils/pubdate.py:117-119`: `/home/pj20/server-04/LMR/code/data/raw_data/ctgov/{train,test,dev}.jsonl`
+- `verl/utils/reward_score/msmarco.py:20,23,26,29,48`: `/shared/eng/pj20/lmr_model/raw_data/msmarco/indexes/lucene-index-msmarco-passage`, `/home/azureuser/cloudfiles/code/DeepRetrieval/indexes/{-index-msmarco-passage, minilm-…, mpnet-…, contriever-…-dense-index}`
+- `src/eval/BM25/msmarco.py:28` (index) and `:144` (model); `src/eval/BM25/baselines/search/msmarco_subset.py:14,18`
+- `src/eval/Dense/msmarco.py:29,146`; `src/eval/Dense/msmarco_sub.py:19,22,25,28`; `src/eval/Dense/baselines/search/msmarco_subset.py:45`
+- Model checkpoints under `/shared/eng/pj20/lmr_model/...` (default `--model_path`):
+  - `src/eval/BM25/{nq,squad,triviaqa}.py`
+  - `src/eval/SQL/{bird,bird_case_study}.py`
+  - `src/eval/SearchEngine/{eval_pubmed,eval_pubmed_no_reason,eval_ctgov}.py`
+  - `src/cold_start/sql/sft.py:132`
+- HF cache `/srv/local/data/linjc/hub`:
+  - `src/eval/SearchEngine/{eval_pubmed,eval_pubmed_no_reason,eval_ctgov}.py:32`
+  - `src/eval/{BM25,Dense}/baselines/model_generate*/**/model_generate.py:17`
+
+## Part 9 write-up (sh)
+
+
+Branch `audit-round-2`. Nothing committed. I edited no `.py` files under verl/src/data_preprocess and did not touch pyproject.toml.
+
+#### Files
+
+| File | Status |
+|---|---|
+| `code/scripts/setup_pod.sh` | new, executable, bash (bash-target 3.2; the pod runs bash 5.1) |
+| `code/scripts/common.sh` | new, POSIX sh, sourced by launchers |
+| `code/scripts/train/**.sh`, `code/scripts/eval/**.sh` (52) | changed |
+| `code/.env.example` | new |
+| `code/.gitignore` | adds `.env.tmp.*` (`.env` was already ignored at line 115; `.env.example` is not ignored) |
+| `code/tests/shell/{helpers.bash,setup_pod.bats,common.bats,launchers.bats}` | new, 43 tests |
+| `README.md` | new "Running on Runpod" section and TOC entry; launcher/CUDA note; SLURM note updated |
+| `CLAUDE.md` | Environment gets a Runpod bullet; the Commands training paragraph is rewritten for common.sh, DEEPRETRIEVAL_DATA_DIR and the CUDA removal |
+
+**Why `code/scripts/`:** the launchers already live there, the uv project is `code/`, and there is no repo-root `scripts/`. common.sh finds `code/` by walking up from the launcher's `$0`.
+
+#### setup_pod.sh behaviour
+
+The order is chosen so that cheap checks fail first:
+1. `/workspace` must be a mount point (`mountpoint -q`, with a `df -P` fallback). `--workspace DIR` skips this check for any other directory.
+2. `nvidia-smi -L`: if it fails, the script dies. Fewer than `--gpus N` (default 2) is a WARNING. *Deviation from the brief:* this runs before the slow steps, not at the end, so a wrong pod fails in seconds instead of after a 10-minute `uv sync`.
+3. Settings and secrets are resolved. The order is `--data-dir` (data dir only), then the environment (non-empty), then the existing `code/.env`, then a hidden prompt (only when stdin is a TTY and `--non-interactive` is not given), then the default (settings only). `--require-pubmed-key` dies here, naming `PUBMED_API_KEY`, before anything slow has run.
+   - Values containing `'` or a line break are rejected, and the value is not shown.
+   - The log prints `KEY: set (environment|existing .env|entered)` or `KEY: not set - <consequence>`. Setting values are printed; secret values never are.
+4. uv: if it is not on PATH, uv `0.13.6` (pinned; `--uv-version`) is installed into `/workspace/.local/bin`, so later pods reuse it.
+5. Repo: if `--dest` (default `/workspace/DeepRetrieval`) does not exist, `git clone [--branch B] -- URL DEST`. Otherwise `fetch`, `[checkout B]`, `pull --ff-only`. A checkout with modified tracked files gets a warning and is not updated. `main "$@"; exit` are parsed together, so a pull that rewrites the running script is safe.
+6. `code/.env` is written with `mktemp` in the same dir (0600), `chmod 600`, then an atomic `mv`. KEY=VALUE lines it does not manage (e.g. OPENAI_API_KEY) are kept. Empty optional secrets are left out. It contains:
+   - the secrets that are set;
+   - `DEEPRETRIEVAL_DATA_DIR=/workspace/data`, `HF_HOME=/workspace/.cache/huggingface`, `UV_CACHE_DIR=/workspace/.cache/uv`;
+   - `UV_PYTHON_INSTALL_DIR=/workspace/.cache/uv-python`. This one was not in the brief but is needed: with `python-preference = only-managed` the venv links to uv's CPython, which otherwise lives in `~` on the container disk, so a new pod would get a broken venv;
+   - `RAY_ENABLE_UV_RUN_RUNTIME_ENV=0` and `VERL_LOGGING_LEVEL=INFO`.
+7. `uv --directory code sync --extra gpu --extra retrieval`, with the volume's cache dirs exported.
+8. `uv run python download_datasets.py --categories … --datasets … --output_dir "$DEEPRETRIEVAL_DATA_DIR"`. It is skipped when every dataset has a `train.parquet` and a `test.parquet` under `<data>/<category>/<dataset>/` (any depth), unless `--force`. Lists are comma-separated. The script checks again after downloading, because download_datasets.py exits 0 even when files fail.
+9. `uv run python -c "from verl.utils.toolchain import require_triton_toolchain; require_triton_toolchain()"`.
+
+Every external command is `|| die "<what failed>"`. Exit codes: 0 success, 1 failure, 2 usage error. `--dry-run` prints `would run: …` and writes nothing.
+
+#### common.sh behaviour
+
+It is POSIX sh because launchers run as `sh x.sh`, which is dash on Ubuntu. It:
+- finds `code/` from `$0`;
+- validates `code/.env`: only comments, blank lines and `KEY='…'` / `KEY="…"` (no `$`, backtick or `\`) / bare-word lines. Anything else fails with "line N" and the file is not sourced;
+- saves variables that are already set (non-empty), sources the file under `set -a`, then restores them;
+- defaults `DEEPRETRIEVAL_DATA_DIR=<code>/data` and `RAY_ENABLE_UV_RUN_RUNTIME_ENV=0`;
+- prepends `code/.venv/bin` to PATH when no `VIRTUAL_ENV` is active (needed so `sh scripts/train/pubmed_32.sh` works on the pod without activating anything);
+- runs `mkdir -p exp_log`, then cd to code/;
+- prints one stderr summary line (code dir, data dir, .env loaded or absent, CUDA_VISIBLE_DEVICES or `<unset: all GPUs>`) and warns if the data dir is missing;
+- never sets CUDA_VISIBLE_DEVICES.
+
+#### What changed in the launchers (52 files)
+
+- **`export CUDA_VISIBLE_DEVICES=…` removed everywhere**, including commented-out copies. These were hardcoded to the authors' cluster (`4,7`, `2,3,4,5,6,7`, `1,2,3,6`, …), which breaks on a 2-GPU pod. Whatever the environment sets is now respected, and all GPUs are used when nothing is set.
+- Each file now starts with `#!/bin/sh`, two comment lines, and `. "$(dirname "$0")/<../..>/common.sh" || exit 1`.
+- `data/…` became `"$DEEPRETRIEVAL_DATA_DIR"/…`, including in commented examples.
+- ShellCheck SC2086 quoting (applied with `shellcheck -f diff`): `"$DATA_PATH"`, `"$DATE"`, etc. This was needed: the bats test showed that a data dir containing a space split `--data_path $DATA_PATH`. msmarco_dense.sh got one `# shellcheck disable=SC2034` for its unused `encoder=` variable.
+- **No hyperparameter changed.** Proof: I ran all 52 launchers from HEAD and from the working tree under dash, with `python`/`python3`/`date` stubbed and `DEEPRETRIEVAL_DATA_DIR=data`. The captured argv (1167 args) was byte-identical (`diff` empty). Harness: `scratchpad/equiv/argv_capture.sh`.
+
+#### Tests (`code/tests/shell/`, run with `npx --yes bats@1.13.0 tests/shell` from code/)
+
+- **setup_pod.bats (29):** git, uv, nvidia-smi and curl are stubs that record calls; the workspace path contains a space. Covered:
+  - help, usage errors (unknown option, bad `--gpus`, relative `--data-dir`), missing workspace;
+  - `.env` is mode 600 and has the expected keys; missing optional secrets are skipped and named;
+  - clone, sync, download and verify commands;
+  - environment secrets are written and never printed; environment beats an existing .env; `--data-dir` beats the environment;
+  - an idempotent second run (secrets reused, `pull --ff-only`, no download, same content); unrelated keys are preserved; `--force`;
+  - `--require-pubmed-key` fails, naming the variable, before uv is called; it passes when the key is set; non-TTY stdin counts as non-interactive;
+  - a quote in a secret is rejected without echo; comma lists; a download that produces nothing fails; uv sync failure stops before the download; toolchain failure; fewer GPUs warns; nvidia-smi failure; a dirty checkout is not pulled;
+  - `--branch` on clone and on update; uv is installed when missing; `--dry-run` runs and writes nothing and leaks no secret; `prompt_secret` does not echo.
+- **common.bats (9):** each test runs under dash and bash. Covered: defaults, cwd and exp_log; a nested launcher; a relative `$0`; .env loaded and exported; pre-set variables win; CUDA passthrough; .venv on PATH; malformed .env rejected; comment and export lines accepted.
+- **launchers.bats (5):** ≥50 launchers; no `CUDA_VISIBLE_DEVICES=`; no relative `data/`; the first command sources common.sh through a path that resolves; every launcher runs under dash with stubbed python, passes CUDA_VISIBLE_DEVICES through, and has every `*.parquet` argument under `$DEEPRETRIEVAL_DATA_DIR` (path with a space).
+- **TDD:** all suites were written first and failed: 41 of 42 at first run, the 42nd being the trivial "there are launchers to check". The prompt test was added afterwards. I mutation-checked it (echoing the reply makes it fail) and the precedence rule (swapping env and .env order makes it fail).
+
+#### Results
+
+- bats: 43/43 on bash 5.3.9 (Homebrew) and 43/43 on macOS `/bin/bash` 3.2.57 (`TEST_BASH=/bin/bash PATH=/bin:$PATH`).
+- skill `check.sh --target 3.2` on setup_pod.sh and common.sh: bash -n, shellcheck, shfmt and audit_bash all pass. Suppressions with written reasons:
+  - SC2310 file-wide (deliberate `|| die`);
+  - one SC2086 (key list split on purpose);
+  - B307 (`$#` in arithmetic);
+  - B402 (long script: the brief asked for shell).
+- shellcheck on all 52 launchers: clean. audit_bash over all `scripts/**/*.sh`: 0 findings.
+- `cd code && uv run pytest -q`: **1004 passed, 16 skipped**. The count rose from 872 because of the concurrent agent's new tests. No failures.
+
+#### Not verified
+
+- No run on a real pod: real `mountpoint`, the uv installer download, git over the network, the real `uv sync` and download.
+- Interactive prompting through a real TTY: a `script(1)` pty test was racy, so only `prompt_secret` is unit-tested.
+- Tools came from `npx bats@1.13.0` and `uvx shellcheck-py` (0.11.0) / `shfmt-py` (3.14.1). Nothing was installed with brew.

@@ -9,8 +9,9 @@ sys.path.append('./')
 from src.Dense.hotpotqa.search import PyseriniFaissSearcher
 from src.eval.BM25.utils import parse_qrel
 from src.Lucene.utils import ndcg_at_k
+from verl.utils.paths import data_path
 
-index_path = 'data/local_index_search/hotpotqa/dense_index/faiss-flat.beir-v1.0.0-hotpotqa.bge-base-en-v1.5.20240107'
+index_path = str(data_path('local_index_search/hotpotqa/dense_index/faiss-flat.beir-v1.0.0-hotpotqa.bge-base-en-v1.5.20240107'))
 model_name = 'BAAI/bge-base-en-v1.5'
 
 if not os.path.exists(index_path):
@@ -20,7 +21,7 @@ else:
     search_system = PyseriniFaissSearcher(index_path, model_name)
 
 if __name__ == '__main__':
-    with open("data/raw_data/hotpotqa/qrels/test.tsv", "r", encoding="utf-8") as file:
+    with open(str(data_path("raw_data/hotpotqa/qrels/test.tsv")), "r", encoding="utf-8") as file:
         qrel_test = [line.strip().split("\t") for line in file]
 
     qrel_test = qrel_test[1:]  # remove the header
@@ -28,7 +29,7 @@ if __name__ == '__main__':
     qrel_test = parse_qrel(qrel_test)
 
     # read code/data/raw_data/hotpotqa/queries.jsonl
-    with open("data/raw_data/hotpotqa/queries.jsonl", "r", encoding="utf-8") as file:
+    with open(str(data_path("raw_data/hotpotqa/queries.jsonl")), "r", encoding="utf-8") as file:
         queries = [json.loads(line) for line in file]
     queries_dict = {q['_id']: q['text'] for q in queries}
     

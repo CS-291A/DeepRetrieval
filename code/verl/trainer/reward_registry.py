@@ -30,6 +30,7 @@ from typing import Any
 
 import torch
 
+from verl.utils.paths import require_existing, resolve_data_reference
 from verl.utils.torch_functional import scalars_to_floats
 
 # Reward-table inversions shared by the training and validation metrics.
@@ -248,7 +249,10 @@ def data_source_kwargs(sample: Mapping[str, Any], data_source: str, apis: Search
 
 
 def sql_kwargs(sample: Mapping[str, Any], data_source: str, apis: SearchApis) -> dict[str, Any]:
-    return {'data_source': data_source, 'db_path': sample['extra_info']['db_path']}
+    # Parquets store `data/...` (relative to code/); re-root it under the data dir. sqlite3.connect
+    # would silently create an empty database for a missing file, so a missing one fails here.
+    db_path = require_existing(resolve_data_reference(sample['extra_info']['db_path']), f'{data_source} SQLite database')
+    return {'data_source': data_source, 'db_path': str(db_path)}
 
 
 # ---------------------------------------------------------------------------------------------

@@ -15,6 +15,7 @@ project_root = os.path.dirname(os.path.dirname(current_dir))
 sys.path.insert(0, project_root)
 
 from src.sql.bird import BirdDatabaseSearcher
+from verl.utils.paths import data_path
 
 _searcher = None
 
@@ -168,7 +169,7 @@ def evaluate_model(model, tokenizer, data_path, device, model_name, save_dir, ba
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_path", type=str, default="/shared/eng/pj20/lmr_model/bird_3b/actor/global_step_400")
-    parser.add_argument("--data_path", type=str, default="data/sql/bird/test.parquet")
+    parser.add_argument("--data_path", type=str, default=str(data_path("sql/bird/test.parquet")))
     parser.add_argument("--model_name", type=str, default="bird-3b-step-400")
     parser.add_argument("--save_dir", type=str, default="results")
     parser.add_argument("--batch_size", type=int, default=8)

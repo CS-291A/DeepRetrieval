@@ -7,6 +7,7 @@ from typing import Any, cast
 from datasets import Dataset
 
 from verl.utils.hdfs_io import copy, makedirs
+from verl.utils.paths import data_path
 
 INSTRUCTION = """
 The Assistant is a clinical specialist. He is conducting research and doing a medical literature review. His task is to create query terms for a search URL to find relevant literature on PubMed or ClinicalTrials.gov.
@@ -88,11 +89,11 @@ def load_matching_dataset():
     data_test = []
     data_val = []
     
-    with open('data/raw_data/pubmed/train.jsonl', 'r') as f:
+    with open(str(data_path('raw_data/pubmed/train.jsonl')), 'r') as f:
         for line in f:
             data_train.append(json.loads(line))
 
-    with open('data/raw_data/pubmed/test.jsonl', 'r') as f:
+    with open(str(data_path('raw_data/pubmed/test.jsonl')), 'r') as f:
         # cnt = 0
         # for line in f:
         #     data_val.append(json.loads(line))
@@ -114,7 +115,7 @@ def load_matching_dataset():
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--local_dir', default='data/search_engine')
+    parser.add_argument('--local_dir', default=str(data_path('search_engine')))
     parser.add_argument('--hdfs_dir', default=None)
     parser.add_argument('--dataset', type=str, default='pubmed')
 

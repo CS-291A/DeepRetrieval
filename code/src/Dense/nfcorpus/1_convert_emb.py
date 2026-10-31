@@ -10,6 +10,7 @@ sys.path.append('code')
 import os
 
 from src.Dense.utils import average_pool
+from verl.utils.paths import data_path
 
 MODEL_NAME = "BAAI/bge-base-en-v1.5"
 
@@ -59,8 +60,8 @@ def process_corpus(jsonl_path, output_dir):
     print(f"Embeddings saved to {embedding_output}, Doc IDs saved to {doc_ids_output}")
 
 
-ori_data_dir = "code/data/raw_data/fever/corpus.jsonl"
-output_dir = "code/data/local_index_search/fever/dense"
+ori_data_dir = str(data_path("raw_data/fever/corpus.jsonl"))
+output_dir = str(data_path("local_index_search/fever/dense"))
 
 os.makedirs(output_dir, exist_ok=True)
 

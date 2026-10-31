@@ -16,8 +16,9 @@ SCRIPTS = (
 
 @pytest.fixture
 def raw_msmarco(tmp_path, monkeypatch):
-    """Tiny data/raw_data/msmarco/msmarco_<domain>/{train,dev}.jsonl under a fresh cwd."""
+    """Tiny raw_data/msmarco/msmarco_<domain>/{train,dev}.jsonl under a fresh data dir (tmp/data)."""
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DEEPRETRIEVAL_DATA_DIR", str(tmp_path / "data"))
     for domain in DOMAINS:
         folder = tmp_path / "data" / "raw_data" / "msmarco" / f"msmarco_{domain}"
         folder.mkdir(parents=True)
@@ -47,7 +48,7 @@ def test_each_domain_is_loaded_once(raw_msmarco, train_file_opens, monkeypatch, 
     run_script_as_main(monkeypatch, relpath)
 
     assert sorted(train_file_opens) == sorted(
-        f"data/raw_data/msmarco/msmarco_{d}/train.jsonl" for d in DOMAINS
+        str(raw_msmarco / "data" / "raw_data" / "msmarco" / f"msmarco_{d}" / "train.jsonl") for d in DOMAINS
     )
 
 

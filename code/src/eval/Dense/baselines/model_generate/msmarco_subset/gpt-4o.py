@@ -12,12 +12,13 @@ tqdm.pandas()
 sys.path.append('./')
 
 from src.utils.gpt_azure import gpt_chat_4o, gpt_chat_4omini
+from verl.utils.paths import data_path
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_name', type=str, default='gpt-4o', choices=['gpt-4o-mini', 'gpt-4o'])
     parser.add_argument('--save_dir', type=str, default='../results')
-    parser.add_argument("--data_path", type=str, default="data/local_index_search/msmarco_tech/sparse/test.parquet")
+    parser.add_argument("--data_path", type=str, default=str(data_path("local_index_search/msmarco_tech/sparse/test.parquet")))
     parser.add_argument('--dataset', type=str, default='msmarco_tech')
     args = parser.parse_args()
     

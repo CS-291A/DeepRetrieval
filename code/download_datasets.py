@@ -5,6 +5,8 @@ import os
 from huggingface_hub import hf_hub_download, list_repo_files
 from tqdm import tqdm
 
+from verl.utils.paths import data_dir
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -23,7 +25,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Download DeepRetrieval datasets from Huggingface')
     parser.add_argument('--repo_id', type=str, default='DeepRetrieval/datasets', 
                         help='Huggingface repository ID')
-    parser.add_argument('--output_dir', type=str, default='./data',
+    parser.add_argument('--output_dir', type=str, default=str(data_dir()),
                         help='Directory to save downloaded datasets')
     parser.add_argument('--categories', nargs='+', default=['all'],
                         help=f'Specific categories to download: {", ".join(MAIN_CATEGORIES)} or "all"')

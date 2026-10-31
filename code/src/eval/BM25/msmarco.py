@@ -21,6 +21,7 @@ from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from src.Lucene.utils import ndcg_at_k
+from verl.utils.paths import data_path
 
 # REPLACE THIS WITH YOUR OWN INDEX PATH
 index_dir = "/shared/eng/pj20/lmr_model/raw_data/msmarco/indexes/lucene-index-msmarco-passage"
@@ -140,7 +141,7 @@ def evaluate_model(model, tokenizer, data_path, device, model_name, save_dir, ba
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_path", type=str, default="/shared/eng/pj20/lmr_model/msmarco_health_sparse_recall/actor/global_step_100")
-    parser.add_argument("--data_path", type=str, default="data/local_index_search/msmarco_health/test.parquet")
+    parser.add_argument("--data_path", type=str, default=str(data_path("local_index_search/msmarco_health/test.parquet")))
     parser.add_argument("--model_name", type=str, default="msmarco_health_sparse_recall_step_100")
     parser.add_argument("--save_dir", type=str, default="results")
     parser.add_argument("--batch_size", type=int, default=32)

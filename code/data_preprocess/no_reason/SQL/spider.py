@@ -7,6 +7,7 @@ from typing import Any, cast
 from datasets import Dataset
 
 from verl.utils.hdfs_io import copy, makedirs
+from verl.utils.paths import data_path, stored_data_reference
 
 INSTRUCTION_SQL = """
 You are a SQL query writing expert. Your task is to write the SQL query for the user query to retrieve data from a database.
@@ -18,9 +19,9 @@ You are a SQL query writing expert. Your task is to write the SQL query for the 
 def generate_schema_prompt(db_id, split, num_rows=None):
 
     if split == 'train' or split == 'val':
-        db_schema_path = f'data/raw_data/spider/spider_data/database/{db_id}/schema.sql'
+        db_schema_path = str(data_path(f'raw_data/spider/spider_data/database/{db_id}/schema.sql'))
     elif split == 'test':
-        db_schema_path = f'data/raw_data/spider/spider_data/test_database/{db_id}/schema.sql'
+        db_schema_path = str(data_path(f'raw_data/spider/spider_data/test_database/{db_id}/schema.sql'))
     else:
         raise ValueError(f"unknown split: {split!r}")
 
@@ -81,18 +82,18 @@ Let me write the SQL query.
 
 def load_bird_dataset():
     
-    with open('data/raw_data/spider/spider_data/train_spider.json', 'r') as f:
+    with open(str(data_path('raw_data/spider/spider_data/train_spider.json')), 'r') as f:
         data_train_spider = json.load(f)
 
-    with open('data/raw_data/spider/spider_data/train_others.json', 'r') as f:
+    with open(str(data_path('raw_data/spider/spider_data/train_others.json')), 'r') as f:
         data_train_other = json.load(f)
 
     data_train = data_train_spider + data_train_other
 
-    with open('data/raw_data/spider/spider_data/test.json', 'r') as f:
+    with open(str(data_path('raw_data/spider/spider_data/test.json')), 'r') as f:
         data_test = json.load(f)
             
-    with open('data/raw_data/spider/spider_data/dev.json', 'r') as f:
+    with open(str(data_path('raw_data/spider/spider_data/dev.json')), 'r') as f:
         data_val = json.load(f)
     
     train_data = [{'question': x['question'], 'db_id': x['db_id'], 'sql': x['query']} for x in data_train]
@@ -104,10 +105,10 @@ def load_bird_dataset():
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--local_dir', default='data/sql/wor')
+    parser.add_argument('--local_dir', default=str(data_path('sql/wor')))
     parser.add_argument('--hdfs_dir', default=None)
     parser.add_argument('--dataset', type=str, default='spider_wor')
-    parser.add_argument('--output_dir', type=str, default='data/sql/wor')
+    parser.add_argument('--output_dir', type=str, default=str(data_path('sql/wor')))
 
     args = parser.parse_args()
     
@@ -129,9 +130,9 @@ if __name__ == '__main__':
 
             db_id = example['db_id']
             if split == 'train' or split == 'val':
-                db_path = f'data/raw_data/spider/spider_data/database/{db_id}/{db_id}.sqlite'
+                db_path = stored_data_reference(f'raw_data/spider/spider_data/database/{db_id}/{db_id}.sqlite')
             elif split == 'test':
-                db_path = f'data/raw_data/spider/spider_data/test_database/{db_id}/{db_id}.sqlite'
+                db_path = stored_data_reference(f'raw_data/spider/spider_data/test_database/{db_id}/{db_id}.sqlite')
             else:
                 raise ValueError(f"unknown split: {split!r}")
 

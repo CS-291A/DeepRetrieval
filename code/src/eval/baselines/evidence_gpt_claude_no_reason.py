@@ -18,6 +18,7 @@ import pandas as pd
 from tqdm import tqdm
 
 import utils.java_init  # noqa: F401  (imported for its side effect: sets JAVA_HOME)
+from verl.utils import paths
 
 # utils.java_init must run before pyserini is imported; keep import sorting from moving it.
 # isort: split
@@ -327,9 +328,9 @@ def main():
 
     # Define all combinations
     datasets = {
-        "nq_serini": "data/local_index_search/no_reason/nq_serini/test.parquet",
-        "triviaqa": "data/local_index_search/no_reason/triviaqa/test.parquet",
-        "squad": "data/local_index_search/no_reason/squad/test.parquet"
+        "nq_serini": str(paths.data_path("local_index_search/no_reason/nq_serini/test.parquet")),
+        "triviaqa": str(paths.data_path("local_index_search/no_reason/triviaqa/test.parquet")),
+        "squad": str(paths.data_path("local_index_search/no_reason/squad/test.parquet"))
     }
     
     # Group models by API type to avoid rate limiting conflicts

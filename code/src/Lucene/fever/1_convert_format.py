@@ -1,6 +1,8 @@
 import json
 import os
 
+from verl.utils.paths import data_path
+
 
 def convert_jsonl_for_pyserini(input_file, output_file):
     """Convert JSONL data to Pyserini-compatible format with a structured 'contents' field"""
@@ -25,8 +27,8 @@ def convert_jsonl_for_pyserini(input_file, output_file):
     print(f"✅ Converted JSONL saved to {output_file}")
 
 
-ori_data_dir = "code/data/raw_data/fever/corpus.jsonl"
-output_file = "code/data/local_index_search/fever/jsonl_docs/pyserini_corpus.jsonl"
+ori_data_dir = str(data_path("raw_data/fever/corpus.jsonl"))
+output_file = str(data_path("local_index_search/fever/jsonl_docs/pyserini_corpus.jsonl"))
 
 os.makedirs(os.path.dirname(output_file), exist_ok=True)
 

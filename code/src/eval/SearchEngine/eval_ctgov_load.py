@@ -17,6 +17,7 @@ from threading import Lock
 from tqdm import tqdm
 
 from verl.utils.apis.ctgov import CTGovAPI
+from verl.utils.paths import data_path
 
 # Add these at the top with other global variables
 _request_times = deque(maxlen=20)  # Track last 20 requests
@@ -81,7 +82,7 @@ def main():
     search_api = CTGovAPI()
         
     generations_path = "results/ctgov_reason/llm_responses_claude-hiku.json"
-    test_path = "data/raw_data/ctgov/test.jsonl"
+    test_path = str(data_path("raw_data/ctgov/test.jsonl"))
     test_data = []
     with open(test_path, 'r') as f:
         for line in f:

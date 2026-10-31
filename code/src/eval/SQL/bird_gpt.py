@@ -15,6 +15,7 @@ sys.path.insert(0, project_root)
 from src.sql.bird import BirdDatabaseSearcher
 from src.utils.claude_api import get_claude_response
 from src.utils.gpt import gpt_chat
+from verl.utils.paths import data_path
 
 
 def get_llm_response(prompt, llm_name):
@@ -180,7 +181,7 @@ def evaluate_model(llm_name, data_path, save_dir, with_reasoning=True):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--llm_name", type=str, default="gpt-4o")
-    parser.add_argument("--data_path", type=str, default="data/sql/bird/test.parquet")
+    parser.add_argument("--data_path", type=str, default=str(data_path("sql/bird/test.parquet")))
     parser.add_argument("--save_dir", type=str, default="results/sql/bird")
     parser.add_argument("--with_reasoning", type=str, default='True')
     # parser.add_argument("--with_reasoning", type=str, default='false')

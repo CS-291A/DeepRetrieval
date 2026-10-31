@@ -1,4 +1,7 @@
-export CUDA_VISIBLE_DEVICES=0
+#!/bin/sh
+# common.sh: loads code/.env, defaults DEEPRETRIEVAL_DATA_DIR, creates exp_log/, cd code/.
+# GPUs: all visible ones are used; export CUDA_VISIBLE_DEVICES first to restrict them.
+. "$(dirname "$0")/../common.sh" || exit 1
 
 # MODEL_PATH=/dev/ana/sft_training_outputs/spider/checkpoint-3135
 # MODEL_PATH=/dev/ana/sft_training_outputs/spider/checkpoint-4180
@@ -21,7 +24,7 @@ MODEL_PATH=DeepRetrieval/DeepRetrieval-SQL-7B
 
 python src/eval/SQL/spider.py \
     --model_path $MODEL_PATH \
-    --data_path data/sql/spider/val.parquet \
+    --data_path "$DEEPRETRIEVAL_DATA_DIR"/sql/spider/val.parquet \
     --model_name spider-7b-full \
     --save_dir ../results \
     --with_reasoning true \

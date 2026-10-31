@@ -7,6 +7,8 @@ import numpy as np
 import torch
 from transformers import AutoModel, AutoTokenizer
 
+from verl.utils.paths import data_path
+
 
 class FaissHNSWSearcher:
     def __init__(self, model_name, index_path, doc_ids_path, device="auto"):
@@ -102,7 +104,7 @@ class FaissHNSWSearcher:
 
 # Example usage
 if __name__ == "__main__":
-    output_dir = "code/data/local_index_search/scifact/dense_index"
+    output_dir = str(data_path("local_index_search/scifact/dense_index"))
     index_path = f"{output_dir}/faiss_hnsw_index.bin"
     doc_ids_path = f"{output_dir}/doc_ids.npy"
     

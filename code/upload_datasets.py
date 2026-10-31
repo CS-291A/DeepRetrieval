@@ -8,6 +8,8 @@ import tempfile
 from huggingface_hub import HfApi, create_repo, upload_folder
 from tqdm import tqdm
 
+from verl.utils.paths import data_dir
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -16,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Upload DeepRetrieval datasets to Huggingface')
-    parser.add_argument('--input_dir', type=str, default='./data',
+    parser.add_argument('--input_dir', type=str, default=str(data_dir()),
                         help='Root directory containing the datasets')
     parser.add_argument('--repo_id', type=str, default='DeepRetrieval/datasets',
                         help='Huggingface repository ID to upload to')

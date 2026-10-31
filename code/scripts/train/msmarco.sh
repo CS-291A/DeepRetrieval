@@ -1,4 +1,7 @@
-export CUDA_VISIBLE_DEVICES=2,3
+#!/bin/sh
+# common.sh: loads code/.env, defaults DEEPRETRIEVAL_DATA_DIR, creates exp_log/, cd code/.
+# GPUs: all visible ones are used; export CUDA_VISIBLE_DEVICES first to restrict them.
+. "$(dirname "$0")/../common.sh" || exit 1
 
 PROJECT_NAME=msmarco_search
 train_domain=tech
@@ -9,8 +12,8 @@ EXP_NAME=msmarco_search_3b_${train_domain}_${retrieval_mode}_new_corpus
 DATE=$(date '+%Y-%m-%d-%H-%M-%S')
 
 python3 -m verl.trainer.main_ppo \
-    data.train_files=data/local_index_search/msmarco_${train_domain}/${retrieval_mode}/train.parquet \
-    data.val_files=data/local_index_search/msmarco_${eval_domain}/${retrieval_mode}/test.parquet \
+    data.train_files="$DEEPRETRIEVAL_DATA_DIR"/local_index_search/msmarco_${train_domain}/${retrieval_mode}/train.parquet \
+    data.val_files="$DEEPRETRIEVAL_DATA_DIR"/local_index_search/msmarco_${eval_domain}/${retrieval_mode}/test.parquet \
     data.train_batch_size=64 \
     data.val_batch_size=64 \
     data.max_prompt_length=256 \
@@ -42,4 +45,4 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.model.path=/shared/eng/pj20/lmr_model/msmarco_tech_sparse_new_corpus_k_10/actor/global_step_450 \
     critic.model.path=/shared/eng/pj20/lmr_model/msmarco_tech_sparse_new_corpus_k_10/critic/global_step_450 \
     trainer.default_local_dir=/shared/eng/pj20/lmr_model/msmarco_${train_domain}_${retrieval_mode}_new_corpus_k_10 \
-    trainer.total_epochs=5 2>&1 | tee exp_log/$PROJECT_NAME-3b-ppo-verl_demo_$DATE.log 
+    trainer.total_epochs=5 2>&1 | tee exp_log/$PROJECT_NAME-3b-ppo-verl_demo_"$DATE".log 

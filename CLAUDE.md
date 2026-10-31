@@ -20,6 +20,8 @@ uv sync --extra baselines        # + openai/anthropic/boto3/langchain-*/trl for 
 
 - `gpu` extra deps carry `sys_platform == 'linux'` markers; on macOS they are skipped, so training/rollout cannot run there — only linting, type-checking and CPU tests.
 - Pins that must stay together: `torch==2.4.0` ↔ `vllm==0.6.3`; `numpy<2` (vllm/outlines); `transformers<4.48`; `tensordict<0.6`. Change them only via `pyproject.toml` + `uv lock`.
+- uv is pinned to its own CPython builds (`[tool.uv] python-preference = "only-managed"`): Triton's runtime JIT (flash-attn kernels on the training path) needs a C compiler and `Python.h`, which system Pythons on Debian-based GPU images lack. `verl.utils.toolchain.require_triton_toolchain()` checks both (Triton's exact lookup) in `main_ppo.main` and in `require_cuda` (every CUDA worker).
+- Runpod pods: `bash code/scripts/setup_pod.sh` (run on the pod; idempotent) installs uv, clones/fast-forwards the repo, `uv sync --extra gpu --extra retrieval`, writes `code/.env` (mode 600, gitignored; template `code/.env.example`), downloads pubmed_32 and verifies GPUs/Triton/parquet. Repo, venv, uv cache, uv-managed Python (`UV_PYTHON_INSTALL_DIR`), HF cache and data all live on the `/workspace` volume. Secrets (`PUBMED_API_KEY`, `WANDB_API_KEY`, `HF_TOKEN`): environment, else existing `.env`, else hidden prompt; never printed. Tests: `npx --yes bats@1.13.0 tests/shell` (stubs git/uv/nvidia-smi; `TEST_BASH=/bin/bash` for bash 3.2).
 - Pyserini needs a JDK: `utils/java_init.py` (imported first thing by `verl/trainer/main_ppo.py`) sets `JAVA_HOME` from `~/.jdk/jdk-*` (installed via `install-jdk`).
 
 ## Commands (run from `code/`)
@@ -36,7 +38,7 @@ Type checking: `pyrightconfig.json` at the repo root is shared by Pylance and th
 
 `tests/conftest.py` makes plain `uv run pytest` work on CPU: test files importing flash_attn/vllm aren't collected when those are missing, `tests/{ray,gpu_utility,model,rollout,e2e}` get the `gpu` marker and skip without CUDA, `tests/verl/utils/dataset/*` get `data` and skip without parquet files in `~/verl-data/`, and RNGs are seeded per test. Markers are strict (`gpu`, `data`, `network`). DeepRetrieval-specific unit tests live in `tests/deepretrieval/{rewards,core,evals}/`; they stub pyserini/flash_attn/vllm/API SDKs via `sys.modules` so they need no JVM, GPU or network.
 
-Training / eval / data (shell scripts assume cwd = `code/` and relative `data/...` paths; they hardcode `CUDA_VISIBLE_DEVICES`):
+Training / eval / data. Every launcher under `scripts/{train,eval}/` first sources `scripts/common.sh` (POSIX sh, launchers run under `sh`/dash): it loads `code/.env` without overriding variables already set, defaults `DEEPRETRIEVAL_DATA_DIR=<code>/data` and `RAY_ENABLE_UV_RUN_RUNTIME_ENV=0`, uses `code/.venv` if no venv is active, creates `exp_log/` and cds to `code/`. Launchers read data as `"$DEEPRETRIEVAL_DATA_DIR"/...` and never set `CUDA_VISIBLE_DEVICES` (export it to pick GPUs). `tests/shell/launchers.bats` enforces this for new launchers:
 
 ```bash
 python download_datasets.py --categories search_engine --datasets pubmed_32 --output_dir ./data

@@ -21,6 +21,8 @@ from pyserini.search.lucene import LuceneSearcher
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from verl.utils.paths import data_path
+
 _searcher = None
 _tokenizer = SimpleTokenizer()
 
@@ -270,7 +272,7 @@ def print_recall_summary(recall_at_1, recall_at_5, recall_at_20, recall_at_100):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_path", type=str, default="/shared/eng/pj20/lmr_model/squad/actor/global_step_400")
-    parser.add_argument("--data_path", type=str, default="data/local_index_search/squad/test.parquet")
+    parser.add_argument("--data_path", type=str, default=str(data_path("local_index_search/squad/test.parquet")))
     parser.add_argument("--model_name", type=str, default="squad_ours")
     parser.add_argument("--save_dir", type=str, default="results/generations")
     # parser.add_argument("--flash_attn", type=bool, default=True)

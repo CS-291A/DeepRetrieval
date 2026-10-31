@@ -9,6 +9,7 @@ import argparse
 
 from src.Dense.scifact.search import FaissHNSWSearcher
 from src.Lucene.utils import ndcg_at_k
+from verl.utils.paths import data_path
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -24,7 +25,7 @@ if __name__ == '__main__':
     args.res_path = res_dir
 
     model_path = "intfloat/multilingual-e5-large-instruct"
-    output_dir = "data/local_index_search/scifact/dense_index"
+    output_dir = str(data_path("local_index_search/scifact/dense_index"))
     index_path = f"{output_dir}/faiss_hnsw_index.bin"
     doc_ids_path = f"{output_dir}/doc_ids.npy"
     

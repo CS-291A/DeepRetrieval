@@ -111,8 +111,9 @@ target/
 # celery beat schedule file
 celerybeat-schedule
 
-# dotenv
+# dotenv (code/.env.example is tracked; setup_pod.sh writes .env via .env.tmp.*)
 .env
+.env.tmp.*
 
 # virtualenv
 venv/

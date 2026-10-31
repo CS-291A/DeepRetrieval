@@ -5,6 +5,8 @@ import random
 import re
 import sys
 
+from verl.utils.paths import DATA_DIR_ENV, data_path
+
 logger = logging.getLogger(__name__)
 
 sys.path.append('./')
@@ -13,11 +15,12 @@ sys.path.append('./')
 from src.Dense.fever.search import PyseriniFaissSearcher
 from src.Lucene.utils import ndcg_at_k
 
-index_dir = 'data/local_index_search/fever/dense_index/faiss-flat.beir-v1.0.0-fever.bge-base-en-v1.5.20240107'
+index_dir = str(data_path('local_index_search/fever/dense_index/faiss-flat.beir-v1.0.0-fever.bge-base-en-v1.5.20240107'))
 model_path = "BAAI/bge-base-en-v1.5"
 
 if not os.path.exists(index_dir):
-    logger.warning('Pyserini index not found for fever')
+    logger.warning('Faiss index not found for %s at %s (data dir: $%s, default <code>/data)',
+                   'fever', index_dir, DATA_DIR_ENV)
     search_system = None
 else:
     search_system = PyseriniFaissSearcher(index_dir, model_path)

@@ -7,6 +7,7 @@ from typing import Any, cast
 from datasets import Dataset
 
 from verl.utils.hdfs_io import copy, makedirs
+from verl.utils.paths import data_path
 
 INSTRUCTION_SPARSE = """
 You are a query rewriting expert. Your task is to augment the user query to find relevant literature in a corpus with sparse retrieval.
@@ -60,15 +61,15 @@ def load_matching_dataset(domain):
     data_test = []
     data_val = []
     
-    with open(f'data/raw_data/msmarco/msmarco_{domain}/train.jsonl', 'r') as f:
+    with open(str(data_path(f'raw_data/msmarco/msmarco_{domain}/train.jsonl')), 'r') as f:
         for line in f:
             data_train.append(json.loads(line))
 
-    with open(f'data/raw_data/msmarco/msmarco_{domain}/dev.jsonl', 'r') as f:
+    with open(str(data_path(f'raw_data/msmarco/msmarco_{domain}/dev.jsonl')), 'r') as f:
         for line in f:
             data_test.append(json.loads(line))
             
-    with open(f'data/raw_data/msmarco/msmarco_{domain}/dev.jsonl', 'r') as f:
+    with open(str(data_path(f'raw_data/msmarco/msmarco_{domain}/dev.jsonl')), 'r') as f:
         cnt = 0
         for line in f:
             data_val.append(json.loads(line))
@@ -85,11 +86,11 @@ def load_matching_dataset(domain):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--local_dir', default='data/local_index_search/no_reason')
+    parser.add_argument('--local_dir', default=str(data_path('local_index_search/no_reason')))
     parser.add_argument('--hdfs_dir', default=None)
     parser.add_argument('--dataset', type=str, default='msmarco')
     parser.add_argument('--domains', type=list, default=['all', 'health', 'science', 'tech'])
-    parser.add_argument('--output_dir', type=str, default='data/local_index_search/no_reason')
+    parser.add_argument('--output_dir', type=str, default=str(data_path('local_index_search/no_reason')))
     
     args = parser.parse_args()
     

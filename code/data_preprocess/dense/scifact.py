@@ -6,6 +6,8 @@ from typing import Any, cast
 
 from datasets import Dataset, concatenate_datasets
 
+from verl.utils.paths import data_path
+
 INSTRUCTION = """
 You are an expert in generating queries for dense retrieval. Given a scientific claim, your task is to retain the original query while expanding it with additional semantically relevant information. If no useful expansion is needed, return the original query as is."""
 
@@ -33,21 +35,21 @@ Assistant: Let me think step by step.
 
 def load_matching_dataset():
     # code/data/raw_data/scifact/qrels/*.tsv
-    with open("code/data/raw_data/scifact/qrels/train.tsv", "r", encoding="utf-8") as file:
+    with open(str(data_path("raw_data/scifact/qrels/train.tsv")), "r", encoding="utf-8") as file:
         qrel_train = [line.strip().split("\t") for line in file]
     
     qrel_train = qrel_train[1:]  # remove the header
     
-    with open("code/data/raw_data/scifact/qrels/test.tsv", "r", encoding="utf-8") as file:
+    with open(str(data_path("raw_data/scifact/qrels/test.tsv")), "r", encoding="utf-8") as file:
         qrel_test = [line.strip().split("\t") for line in file]
 
     qrel_test = qrel_test[1:]  # remove the header
     
-    with open("code/data/raw_data/scifact/qrels/dev.tsv", "r", encoding="utf-8") as file:
+    with open(str(data_path("raw_data/scifact/qrels/dev.tsv")), "r", encoding="utf-8") as file:
         qrel_val = [line.strip().split("\t") for line in file]
 
     # read code/data/raw_data/scifact/queries.jsonl
-    with open("code/data/raw_data/scifact/queries.jsonl", "r", encoding="utf-8") as file:
+    with open(str(data_path("raw_data/scifact/queries.jsonl")), "r", encoding="utf-8") as file:
         queries = [json.loads(line) for line in file]
 
     # transform the queries into a dictionary
@@ -74,7 +76,7 @@ def load_matching_dataset():
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--local_dir', default='code/data/local_index_search/scifact/dense')
+    parser.add_argument('--local_dir', default=str(data_path('local_index_search/scifact/dense')))
     parser.add_argument('--hdfs_dir', default=None)
     parser.add_argument('--dataset', type=str, default='scifact')
 

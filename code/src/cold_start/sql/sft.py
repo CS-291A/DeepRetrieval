@@ -10,6 +10,8 @@ from trl import (
     SFTTrainer,
 )
 
+from verl.utils.paths import data_path
+
 # os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
 os.environ['CUDA_VISIBLE_DEVICES'] = '2,3'
 
@@ -41,7 +43,7 @@ model_name = 'Qwen/Qwen2.5-3B-Instruct'
 ################
 
 train_data = []
-with open(f'data/sql/cold_start/{dataset}_reason_sft_train.jsonl', 'r') as f:
+with open(str(data_path(f'sql/cold_start/{dataset}_reason_sft_train.jsonl')), 'r') as f:
     for line in f:
         D = json.loads(line)
         if D != {}:

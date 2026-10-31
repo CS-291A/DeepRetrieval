@@ -1,27 +1,82 @@
 import json
 import logging
+import re
+import threading
 import time
-import traceback
 import xml.etree.ElementTree as ET
+from collections.abc import Callable
 
 import pandas as pd
 import requests
 
 logger = logging.getLogger(__name__)
 
+_API_KEY_IN_TEXT = re.compile(r"(api_key=)[^&\s'\"]+")
+
+
+def _redact(text: str) -> str:
+    """Hide `api_key=...` values: requests puts the full request URL into its error messages."""
+    return _API_KEY_IN_TEXT.sub(r"\1***", text)
+
+
+class _RedactApiKeyFilter(logging.Filter):
+    """Redact API keys from this module's log records, tracebacks included."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.msg = _redact(record.getMessage())
+        record.args = None
+        if record.exc_info and not record.exc_text:
+            record.exc_text = _redact(logging.Formatter().formatException(record.exc_info))
+        return True
+
+
+logger.addFilter(_RedactApiKeyFilter())
+
 PUBMED_BASE_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term="
 PUBMED_SUMMARY_BASE_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&id="
 PUBMED_EFETCH_BASE_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id="
 REQUEST_TIMEOUT = (5, 60)  # (connect, read) seconds; a timeout raises and goes through the retry loop
+# NCBI E-utilities allow 3 requests/s without an API key and 10/s with one (per IP / per key).
+KEYLESS_REQUEST_DELAY = 1 / 3 + 0.01
+KEYED_REQUEST_DELAY = 0.1 + 0.01
+
+
+def _check_ncbi_payload(payload: dict, what: str) -> dict:
+    """NCBI answers some failures (e.g. rate limiting) with HTTP 200 and {"error": ...}; raise on those."""
+    if "error" in payload:
+        raise ConnectionError(f"PubMed {what} returned an error: {payload['error']}")
+    return payload
 
 
 class PubmedAPI:
     """A wrapper class for the Pubmed API with optimized performance.
     """
-    def __init__(self, retry=1, api_key=None, request_delay=0.2):
+    def __init__(self, retry=1, api_key=None, request_delay=None,
+                 clock: Callable[[], float] = time.monotonic, sleep: Callable[[float], None] = time.sleep):
+        """`request_delay` is the minimum spacing between request starts; by default it follows
+        NCBI's limit for the key (≥1/3 s keyless, ≥0.1 s keyed). Pass a smaller value only in
+        tests or with a raised NCBI quota. `clock`/`sleep` are injectable for tests."""
+        assert retry >= 0, f"retry must be >= 0, got {retry}"
         self.retry = retry
         self.api_key = api_key
-        self.request_delay = request_delay  # Delay between requests to avoid rate limiting
+        if request_delay is None:
+            request_delay = KEYED_REQUEST_DELAY if api_key else KEYLESS_REQUEST_DELAY
+        assert request_delay >= 0, f"request_delay must be >= 0, got {request_delay}"
+        self.request_delay = request_delay
+        self._clock = clock
+        self._sleep = sleep
+        self._throttle_lock = threading.Lock()  # reward code may share one client across threads
+        self._last_request_at: float | None = None
+
+    def _get(self, url):
+        """`requests.get` spaced at least `request_delay` after the previous request started."""
+        with self._throttle_lock:
+            if self._last_request_at is not None:
+                wait = self._last_request_at + self.request_delay - self._clock()
+                if wait > 0:
+                    self._sleep(wait)
+            self._last_request_at = self._clock()
+        return requests.get(url, timeout=REQUEST_TIMEOUT)
 
     def search(self, query, topk=-1):
         """Get the response of pmids."""
@@ -49,19 +104,19 @@ class PubmedAPI:
         for i in range(self.retry + 1):
             if i > 0:
                 logger.warning("Retry %d times", i)
-                time.sleep(self.request_delay * 2)  # Longer delay on retries
+                self._sleep(self.request_delay * 2)  # Longer delay on retries
             # Each attempt starts from scratch so a failed attempt leaves nothing behind
             retstart = 0
             pmid_list = []
             try:
                 # First get the count of results
                 count_query = original_query + '&retmax=0'
-                response = requests.get(count_query, timeout=REQUEST_TIMEOUT)
+                response = self._get(count_query)
                 
                 if response.status_code != 200:
                     raise ConnectionError(f"Pubmed connection error occurred - {response.text}")
                 
-                response_dict = json.loads(response.text)
+                response_dict = _check_ncbi_payload(json.loads(response.text), "search")
                 total_count = int(response_dict['esearchresult']['count'])
                 
                 # If topk specified, limit to that number
@@ -80,13 +135,12 @@ class PubmedAPI:
                     current_retmax = min(retmax, count_to_fetch - len(pmid_list))
                     current_query = original_query + f'&retmax={current_retmax}&retstart={retstart}'
                     
-                    response = requests.get(current_query, timeout=REQUEST_TIMEOUT)
-                    time.sleep(self.request_delay)  # Small delay to avoid rate limiting
+                    response = self._get(current_query)
                     
                     if response.status_code != 200:
                         raise ConnectionError(f"Pubmed connection error occurred - {response.text}")
                     
-                    response_dict = json.loads(response.text)
+                    response_dict = _check_ncbi_payload(json.loads(response.text), "search")
                     batch_results = response_dict['esearchresult']['idlist']
                     
                     # If no results returned in this batch, break the loop
@@ -107,12 +161,13 @@ class PubmedAPI:
                 
                 err_msg = ""  # this attempt succeeded; earlier failures no longer matter
                 break
-            except Exception:
-                err_msg = traceback.format_exc()
-                logger.warning("PubMed API search attempt %d/%d failed", i + 1, self.retry + 1, exc_info=True)
+            except Exception as e:
+                err_msg = _redact(f"{type(e).__name__}: {e}")
+                logger.warning("PubMed API search attempt %d/%d failed: %s", i + 1, self.retry + 1, err_msg,
+                               exc_info=True)
 
         if err_msg != "":
-            raise RuntimeError("A Pubmed API error occurred")
+            raise RuntimeError(f"A Pubmed API error occurred: {err_msg}")
 
         return pmid_list
     
@@ -133,7 +188,7 @@ class PubmedAPI:
         for i in range(self.retry + 1):
             if i > 0:
                 logger.warning("Retry %d times", i)
-                time.sleep(self.request_delay * 2)  # Longer delay on retries
+                self._sleep(self.request_delay * 2)  # Longer delay on retries
             try:
                 # Process in batches to avoid URL length limitations
                 batch_size = 200  # Keep batch size reasonable to avoid HTTP 414 errors
@@ -148,8 +203,7 @@ class PubmedAPI:
                     if self.api_key:
                         summary_query += f"&api_key={self.api_key}"
                     
-                    response = requests.get(summary_query, timeout=REQUEST_TIMEOUT)
-                    time.sleep(self.request_delay)  # Small delay to avoid rate limiting
+                    response = self._get(summary_query)
 
                     if response.status_code != 200:
                         if response.status_code == 414:
@@ -157,7 +211,7 @@ class PubmedAPI:
                         else:
                             raise ConnectionError(f"Pubmed connection error occurred: {response.text}")
 
-                    response = json.loads(response.text)
+                    response = _check_ncbi_payload(json.loads(response.text), "summary")
                     results = response.get("result", {})
                     uids = results.get("uids", [])
 
@@ -192,13 +246,13 @@ class PubmedAPI:
                 
                 err_msg = ""  # this attempt succeeded; earlier failures no longer matter
                 break
-            except Exception:
-                err_msg = traceback.format_exc()
-                logger.warning("PubMed get_papers_by_pmids attempt %d/%d failed", i + 1, self.retry + 1,
-                               exc_info=True)
+            except Exception as e:
+                err_msg = _redact(f"{type(e).__name__}: {e}")
+                logger.warning("PubMed get_papers_by_pmids attempt %d/%d failed: %s", i + 1, self.retry + 1,
+                               err_msg, exc_info=True)
         
         if err_msg != "":
-            raise RuntimeError("A Pubmed API error occurred")
+            raise RuntimeError(f"A Pubmed API error occurred: {err_msg}")
 
         return papers
     
@@ -248,8 +302,7 @@ class PubmedAPI:
             if self.api_key:
                 query += "&api_key=" + self.api_key
 
-            response = requests.get(query, timeout=REQUEST_TIMEOUT)
-            time.sleep(self.request_delay)  # Small delay to avoid rate limiting
+            response = self._get(query)
             
             if response.status_code != 200:
                 logger.warning("Error fetching abstracts for batch %d-%d: HTTP %s", i, i + batch_size, response.status_code)

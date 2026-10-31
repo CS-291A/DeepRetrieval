@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from tests.deepretrieval.evals._loader import CODE_DIR, load_script, stub_modules
+from verl.utils import credentials
 
 FAISS_STUBS = ("pyserini", "pyserini.search", "pyserini.search.faiss")
 EVIDENCE_STUBS = (
@@ -57,6 +58,7 @@ PUBMED_MAIN_SCRIPTS = (
 @pytest.mark.parametrize(("relpath", "argv"), PUBMED_MAIN_SCRIPTS)
 def test_pubmed_eval_without_key_file_names_the_missing_key(monkeypatch, tmp_path, relpath, argv):
     monkeypatch.chdir(tmp_path)  # no verl/utils/reward_score/apis/pubmed_api.key here
+    monkeypatch.setattr(credentials, "DEFAULT_PUBMED_API_KEY_PATH", tmp_path / "pubmed_api.key")  # nor in the package
     script = load_script(monkeypatch, relpath, LLM_CLIENT_STUBS)
     monkeypatch.setattr(sys, "argv", [relpath, *argv])
     # Scripts that load a model must fail before doing so; the others don't define load_model.

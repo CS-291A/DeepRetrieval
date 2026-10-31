@@ -9,12 +9,13 @@ sys.path.append('./')
 from src.eval.BM25.utils import parse_qrel
 from src.Lucene.msmarco_beir.search import PyseriniMultiFieldSearch
 from src.Lucene.utils import ndcg_at_k
+from verl.utils.paths import data_path
 
-if not os.path.exists("data/local_index_search/msmarco_beir/pyserini_index"):
+if not os.path.exists(str(data_path("local_index_search/msmarco_beir/pyserini_index"))):
     print("[Warning] Pyserini index not found for msmarco_beir")
     search_system = None
 else:
-    search_system = PyseriniMultiFieldSearch(index_dir="data/local_index_search/msmarco_beir/pyserini_index")
+    search_system = PyseriniMultiFieldSearch(index_dir=str(data_path("local_index_search/msmarco_beir/pyserini_index")))
 
 
 if __name__ == '__main__':
@@ -32,7 +33,7 @@ if __name__ == '__main__':
     with open(res_dir, "r", encoding="utf-8") as file:
         res = json.load(file)
     
-    with open("data/raw_data/msmarco_beir/qrels/test.tsv", "r", encoding="utf-8") as file:
+    with open(str(data_path("raw_data/msmarco_beir/qrels/test.tsv")), "r", encoding="utf-8") as file:
         qrel_test = [line.strip().split("\t") for line in file]
 
     qrel_test = qrel_test[1:]  # remove the header
@@ -40,7 +41,7 @@ if __name__ == '__main__':
     qrel_test = parse_qrel(qrel_test)
 
     # read code/data/raw_data/msmarco_beir/queries.jsonl
-    with open("data/raw_data/msmarco_beir/queries.jsonl", "r", encoding="utf-8") as file:
+    with open(str(data_path("raw_data/msmarco_beir/queries.jsonl")), "r", encoding="utf-8") as file:
         queries = [json.loads(line) for line in file]
     queries_dict = {q['_id']: q['text'] for q in queries}
     

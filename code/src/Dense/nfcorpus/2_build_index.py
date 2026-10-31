@@ -1,6 +1,8 @@
 import faiss
 import numpy as np
 
+from verl.utils.paths import data_path
+
 
 def build_faiss_hnsw_index(embedding_path, doc_ids_path, output_index_path, M=32, ef_construction=200):
     """
@@ -37,7 +39,7 @@ def build_faiss_hnsw_index(embedding_path, doc_ids_path, output_index_path, M=32
     print(f"FAISS HNSW index saved to {output_index_path}")
 
 # File paths
-output_dir = "code/data/local_index_search/scifact/dense"
+output_dir = str(data_path("local_index_search/scifact/dense"))
 embedding_path = f"{output_dir}/embeddings.npy"
 doc_ids_path = f"{output_dir}/doc_ids.npy"
 index_output_path = f"{output_dir}/faiss_hnsw_index.bin"

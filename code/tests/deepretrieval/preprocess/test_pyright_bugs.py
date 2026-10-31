@@ -10,6 +10,7 @@ from tests.deepretrieval.evals._loader import (
     run_script_as_main,
     stub_modules,
 )
+from verl.utils import credentials
 
 PUBDATE = "data_preprocess/utils/pubdate.py"
 API_STUBS = ("verl.utils.apis.pubmed", "verl.utils.apis.ctgov")
@@ -29,6 +30,7 @@ def test_get_pub_date_reraises_original_error_when_failing_before_first_item(mon
 def test_pubdate_main_runs_without_api_key_file(monkeypatch, tmp_path, capsys):
     """Without verl/.../pubmed_api.key, `pubmed_api` was never bound and every split failed."""
     monkeypatch.chdir(tmp_path)  # no key file under the cwd
+    monkeypatch.setattr(credentials, "DEFAULT_PUBMED_API_KEY_PATH", tmp_path / "missing.key")  # nor in the package
     real_open = builtins.open
     remote_prefix = "/home/pj20/server-04/LMR/code/data/raw_data/ctgov/"
     for split in ("train", "test", "dev"):  # audit: ignore[BRANCHING] arrange: one fixture file per split

@@ -4,6 +4,8 @@ from typing import cast
 
 from pyserini.search.faiss import DenseSearchResult, FaissSearcher
 
+from verl.utils.paths import data_path
+
 
 class PyseriniFaissSearcher:
     def __init__(self, index_dir, model_name):
@@ -33,7 +35,7 @@ class PyseriniFaissSearcher:
 
 # Example usage
 if __name__ == "__main__":
-    index_dir = 'code/data/local_index_search/nfcorpus/dense_index/faiss-flat.beir-v1.0.0-nfcorpus.bge-base-en-v1.5.20240107'
+    index_dir = str(data_path('local_index_search/nfcorpus/dense_index/faiss-flat.beir-v1.0.0-nfcorpus.bge-base-en-v1.5.20240107'))
     model_name = 'BAAI/bge-base-en-v1.5'
     searcher = PyseriniFaissSearcher(index_dir, model_name)
     

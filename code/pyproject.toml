@@ -83,6 +83,9 @@ include = ["verl*", "utils*", "tests*"]
 verl = ["version/*", "trainer/config/*.yaml"]
 
 [tool.uv]
+# Always use uv's own CPython builds: they ship Python.h, which Triton's runtime JIT needs (flash-attn
+# kernels on the training path). A host's system Python may lack its -dev package (e.g. Debian images).
+python-preference = "only-managed"
 extra-build-dependencies = { flash-attn = [{ requirement = "torch", match-runtime = true }] }
 
 # flash-attn ships only an sdist on PyPI; declare its metadata so `uv lock` need not build it on macOS.
