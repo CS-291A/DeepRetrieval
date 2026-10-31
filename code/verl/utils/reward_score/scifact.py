@@ -5,13 +5,15 @@ import random
 import re
 import sys
 
+logger = logging.getLogger(__name__)
+
 sys.path.append('./')
 
 from src.Lucene.scifact.search import PyseriniMultiFieldSearch
 from src.Lucene.utils import ndcg_at_k
 
 if not os.path.exists("data/local_index_search/scifact/pyserini_index"):
-    print("[Warning] Pyserini index not found for scifact")
+    logger.warning('Pyserini index not found for scifact')
     search_system = None
 else:
     search_system = PyseriniMultiFieldSearch(index_dir="data/local_index_search/scifact/pyserini_index")
@@ -25,7 +27,7 @@ def extract_solution(solution_str):
     elif "<|im_start|>assistant" in solution_str:
         processed_str = solution_str.split("<|im_start|>assistant", 1)[1].strip()
     else:
-        print("[Error] Failed to locate model response header")
+        logger.debug('Failed to locate model response header')
         return None, ""
 
     # Regular expression to find the last occurrence of <answer>...</answer>
@@ -35,7 +37,7 @@ def extract_solution(solution_str):
     if matches:
         return matches[-1].strip(), processed_str  # Return the last matched answer
     else:
-        print("[Error] No valid answer tags found")
+        logger.debug('No valid answer tags found')
         return None, processed_str
         
 
@@ -49,7 +51,7 @@ def validate_response_structure(processed_str: str, do_print: bool) -> bool:
         Boolean indicating whether all formatting requirements are met
     """
     if do_print:
-        print("\n[Structure Validation]")
+        logger.debug('[Structure Validation]')
     validation_passed = True
 
     # processed_str = '<think> </think>' + processed_str
@@ -68,11 +70,11 @@ def validate_response_structure(processed_str: str, do_print: bool) -> bool:
         positions[tag_name] = pos = processed_str.find(tag_str)
         
         if do_print:
-            print(f"  {tag_str}: count={count}, position={pos}")
+            logger.debug('%s: count=%s, position=%s', tag_str, count, pos)
         
         if count != expected_count:
             if do_print:
-                print(f"  [Error] {tag_str} appears {count} times (expected {expected_count})")
+                logger.debug('%s appears %s times (expected %s)', tag_str, count, expected_count)
             validation_passed = False
 
     # Verify tag order
@@ -80,11 +82,11 @@ def validate_response_structure(processed_str: str, do_print: bool) -> bool:
         positions['think_end'] > positions['answer_start'] or
         positions['answer_start'] > positions['answer_end']):
         if do_print:
-            print("  [Error] Incorrect tag order: Expected <think>...</think><answer>...</answer>")
+            logger.debug('Incorrect tag order: Expected <think>...</think><answer>...</answer>')
         validation_passed = False
     else:
         if do_print:
-            print("  Tag sequence validation passed")
+            logger.debug('Tag sequence validation passed')
     
     return validation_passed
 
@@ -93,7 +95,7 @@ def check_json_format(json_str, do_print=False):
     try:
         if not json_str:
             if do_print:
-                print("[Error] Empty JSON string")
+                logger.debug('Empty JSON string')
             return False
         
         data = json.loads(json_str)
@@ -102,13 +104,13 @@ def check_json_format(json_str, do_print=False):
         required_keys = {"query"}
         if not all(key in data for key in required_keys):
             if do_print:
-                print("[Error] Missing required keys in JSON")
+                logger.debug('Missing required keys in JSON')
             return False
 
         return True
     except (json.JSONDecodeError, TypeError):  # TypeError: `in` on a JSON number / null
         if do_print:
-            print("[Error] JSON decoding failed")
+            logger.debug('JSON decoding failed')
         return False
 
 def retriver_items(query, top_k=3000, threads=16):
@@ -128,7 +130,7 @@ def calculate_answer_score(json_str, label, top_k, do_print=False):
     try:
         query = json.loads(json_str)['query']
     except (json.JSONDecodeError, KeyError, TypeError):
-        print("[Error] Error in evaluation")
+        logger.debug('Error in evaluation')
         return -2
     
     # Executing the model's query must never crash training: any failure is logged and scored
@@ -139,7 +141,7 @@ def calculate_answer_score(json_str, label, top_k, do_print=False):
         pred_results = [item[0] for item in results[query]]
         answer_score = ndcg_at_k(pred_results, target, top_k)
     except Exception:
-        logging.getLogger(__name__).exception(f"Search/scoring failed for model query {str(query)[:200]!r}; scoring -2")
+        logger.exception("Search/scoring failed for model query %r; scoring -2", str(query)[:200])
         return -2
 
     return answer_score
@@ -172,9 +174,7 @@ def compute_score(solution_str, ground_truth, data_source, format_reward=0.1, an
     #     print(f"Format score: {format_score}")
     
     if do_print:
-        print("--------------------------------")
-        print(f"Solution string: {solution_str}")
-        print(f"Target: {label} |")
+        logger.info('--------------------------------\nSolution string: %s\nTarget: %s |', solution_str, label)
     
     answer_score = 0
     if 'test' in data_source or 'val' in data_source:
@@ -194,12 +194,8 @@ def compute_score(solution_str, ground_truth, data_source, format_reward=0.1, an
             total_score = format_score
     
     if do_print:
-        print("\n" + "-"*80)
-        print(" Final Score ".center(80, '-'))
-        print(f"  Format: {format_score}")
-        print(f"  Answer: {answer_score}")
-        print(f"  Total: {total_score}")
-        print("="*80 + "\n")
+        logger.info('\n%s\n%s\n  Format: %s\n  Answer: %s\n  Total: %s\n%s', "-" * 80, " Final Score ".center(80, '-'),
+                    format_score, answer_score, total_score, "=" * 80)
 
     return total_score
 

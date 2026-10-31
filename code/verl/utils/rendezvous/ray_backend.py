@@ -20,6 +20,8 @@ import ray
 from cupy.cuda.nccl import NcclCommunicator, get_unique_id  # pyright: ignore[reportMissingImports]  # cupy is CUDA-only, not in the lock
 from ray.util import list_named_actors
 
+logger = logging.getLogger(__name__)
+
 
 @ray.remote
 class NCCLIDStore:
@@ -39,9 +41,9 @@ def get_nccl_id_store_by_name(name):
         actor = matched_actors[0]
         return ray.get_actor(**actor)
     elif len(matched_actors) > 1:
-        logging.warning(f"multiple actors with same name found: {matched_actors}")
+        logger.warning("multiple actors with same name found: %s", matched_actors)
     elif len(matched_actors) == 0:
-        logging.info(f"failed to get any actor named {name}")
+        logger.info("failed to get any actor named %s", name)
     return None
 
 
@@ -65,14 +67,14 @@ def create_nccl_communicator_in_ray(rank: int,
         for i in range(max_retries):
             nccl_id_store = get_nccl_id_store_by_name(group_name)
             if nccl_id_store is not None:
-                logging.info(f"nccl_id_store {group_name} got")
+                logger.info("nccl_id_store %s got", group_name)
                 nccl_id = ray.get(nccl_id_store.get.remote())
-                logging.info(f"nccl id for {group_name} got: {nccl_id}")
+                logger.info("nccl id for %s got: %s", group_name, nccl_id)
                 communicator = NcclCommunicator(
                     ndev=world_size,
                     commId=nccl_id,
                     rank=rank,
                 )
                 return communicator
-            logging.info(f"failed to get nccl_id for {i+1} time, sleep for {interval_s} seconds")
+            logger.info("failed to get nccl_id for %d time, sleep for %s seconds", i + 1, interval_s)
             time.sleep(interval_s)

@@ -35,6 +35,7 @@ from verl.single_controller.ray import (
 )
 from verl.utils.fs import copy_local_path_from_hdfs
 from verl.utils.hdfs_io import makedirs
+from verl.utils.logging_utils import configure_logging
 from verl.utils.model import compute_position_id_with_mask
 from verl.workers.fsdp_workers import ActorRolloutRefWorker
 
@@ -52,6 +53,7 @@ class RolloutWorkerGroup(Protocol):
 
 @hydra.main(config_path='config', config_name='generation', version_base=None)
 def main(config):
+    configure_logging()
     from pprint import pprint
 
     from omegaconf import OmegaConf

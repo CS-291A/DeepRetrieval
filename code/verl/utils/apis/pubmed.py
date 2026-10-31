@@ -1,10 +1,13 @@
 import json
+import logging
 import time
 import traceback
 import xml.etree.ElementTree as ET
 
 import pandas as pd
 import requests
+
+logger = logging.getLogger(__name__)
 
 PUBMED_BASE_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term="
 PUBMED_SUMMARY_BASE_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&id="
@@ -45,7 +48,7 @@ class PubmedAPI:
 
         for i in range(self.retry + 1):
             if i > 0:
-                print(f"Retry {i} times")
+                logger.warning("Retry %d times", i)
                 time.sleep(self.request_delay * 2)  # Longer delay on retries
             # Each attempt starts from scratch so a failed attempt leaves nothing behind
             retstart = 0
@@ -104,10 +107,9 @@ class PubmedAPI:
                 
                 err_msg = ""  # this attempt succeeded; earlier failures no longer matter
                 break
-            except Exception as e:
+            except Exception:
                 err_msg = traceback.format_exc()
-                print(f"Error in PubMed API: {e}")
-                print(err_msg)
+                logger.warning("PubMed API search attempt %d/%d failed", i + 1, self.retry + 1, exc_info=True)
 
         if err_msg != "":
             raise RuntimeError("A Pubmed API error occurred")
@@ -130,7 +132,7 @@ class PubmedAPI:
         
         for i in range(self.retry + 1):
             if i > 0:
-                print(f"Retry {i} times")
+                logger.warning("Retry %d times", i)
                 time.sleep(self.request_delay * 2)  # Longer delay on retries
             try:
                 # Process in batches to avoid URL length limitations
@@ -169,8 +171,8 @@ class PubmedAPI:
                             cur_res = results[uids[idx]]
                             parse_res = self._parse_json_summary_response(cur_res)
                             batch_papers.append(parse_res)
-                        except Exception as e:
-                            print(f"Error parsing paper {uids[idx]}: {e}")
+                        except Exception:
+                            logger.warning("Error parsing paper %s", uids[idx], exc_info=True)
                     
                     if batch_papers:
                         batch_df = pd.concat(batch_papers, axis=0).reset_index(drop=True)
@@ -190,10 +192,10 @@ class PubmedAPI:
                 
                 err_msg = ""  # this attempt succeeded; earlier failures no longer matter
                 break
-            except Exception as e:
+            except Exception:
                 err_msg = traceback.format_exc()
-                print(f"Error in get_papers_by_pmids: {e}")
-                print(err_msg)
+                logger.warning("PubMed get_papers_by_pmids attempt %d/%d failed", i + 1, self.retry + 1,
+                               exc_info=True)
         
         if err_msg != "":
             raise RuntimeError("A Pubmed API error occurred")
@@ -250,7 +252,7 @@ class PubmedAPI:
             time.sleep(self.request_delay)  # Small delay to avoid rate limiting
             
             if response.status_code != 200:
-                print(f"Error fetching abstracts for batch {i}-{i+batch_size}: {response.status_code}")
+                logger.warning("Error fetching abstracts for batch %d-%d: HTTP %s", i, i + batch_size, response.status_code)
                 continue
             
             try:
@@ -287,8 +289,8 @@ class PubmedAPI:
                                 mesh_terms.append(descriptor.text)
 
                     all_mesh_terms[pmid] = mesh_terms
-            except Exception as e:
-                print(f"Error parsing XML for batch {i}-{i+batch_size}: {e}")
+            except Exception:
+                logger.warning("Error parsing XML for batch %d-%d", i, i + batch_size, exc_info=True)
         
         # Make sure the input and output are in the same order and length
         output_abstracts = []

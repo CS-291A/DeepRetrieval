@@ -1,6 +1,9 @@
 import argparse
 import json
+import logging
 import re
+
+logger = logging.getLogger(__name__)
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--model_name', type=str, default='gpt-35')
@@ -28,6 +31,7 @@ for key, value in data.items():
             "target": value["target"],
         }
     except Exception:
+        logger.warning("no parsable query for %s; keeping the raw generated text", key, exc_info=True)
         answers[key] = {
             "generated_text": value["generated_text"],
             "target": value["target"],

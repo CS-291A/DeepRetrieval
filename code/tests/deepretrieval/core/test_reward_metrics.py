@@ -17,6 +17,7 @@ import torch
 from omegaconf import OmegaConf
 
 from verl import DataProto
+from verl.trainer import reward_registry
 from verl.trainer.ppo import ray_trainer
 
 RESPONSE_LEN = 3
@@ -48,7 +49,7 @@ def _training_batch(rewards):
 
 
 def test_training_hit_at_k_matches_reward_table():
-    metrics = ray_trainer.compute_reward_metrics_nq_serini(_training_batch(ANSWER_SPAN_REWARDS))
+    metrics = reward_registry.compute_reward_metrics_nq_serini(_training_batch(ANSWER_SPAN_REWARDS))
 
     hits = {k: metrics[f"reward/hit@{k}"] for k in (5, 20, 50, 100, 1000, 3000)}
 
@@ -56,7 +57,7 @@ def test_training_hit_at_k_matches_reward_table():
 
 
 def test_training_wrong_answer_excludes_format_errors():
-    metrics = ray_trainer.compute_reward_metrics_nq_serini(_training_batch(ANSWER_SPAN_REWARDS))
+    metrics = reward_registry.compute_reward_metrics_nq_serini(_training_batch(ANSWER_SPAN_REWARDS))
 
     assert metrics["reward/wrong_answer_ratio"] == pytest.approx(0.3)
     assert metrics["reward/format_error_ratio"] == pytest.approx(0.1)
@@ -65,7 +66,7 @@ def test_training_wrong_answer_excludes_format_errors():
 def test_training_ndcg_metric_for_msmarco_matches_reward_table():
     rewards = [0.1 + 0.5, 0.1 + 0.25, 0, -2]
 
-    metrics = ray_trainer.compute_reward_metrics_recall_ndcg(_training_batch(rewards))
+    metrics = reward_registry.compute_reward_metrics_recall_ndcg(_training_batch(rewards))
 
     assert metrics["reward/ndcg"] == pytest.approx(0.75 / 4)
 
@@ -73,7 +74,7 @@ def test_training_ndcg_metric_for_msmarco_matches_reward_table():
 def test_training_sql_metrics_match_reward_table():
     rewards = [0.1 + 1, 0.1 + 0.3, 0, -2]
 
-    metrics = ray_trainer.compute_reward_metrics_sql(_training_batch(rewards))
+    metrics = reward_registry.compute_reward_metrics_sql(_training_batch(rewards))
 
     assert metrics["reward/accuracy"] == pytest.approx(0.25)
     assert metrics["reward/wrong_answer_ratio"] == pytest.approx(0.5)
@@ -132,3 +133,34 @@ def test_validation_ndcg_uses_shared_formula():
     metrics = _validate(["msmarco_test"] * 4, [0.1 + 0.5, 0.1 + 0.25, 0, -2])
 
     assert metrics == pytest.approx({"val/test_score/msmarco_test": 0.75 / 4})
+
+
+REWARD_HELPERS = [reward_registry.compute_answer_span_hit_ratios, reward_registry.compute_mean_ndcg,
+                  reward_registry.compute_sql_accuracy]
+
+
+@pytest.mark.parametrize("helper", REWARD_HELPERS, ids=lambda helper: helper.__name__)
+def test_reward_helper_rejects_a_2d_tensor(helper):
+    # token-level scores must be summed to one reward per sample first
+    with pytest.raises(ValueError, match=r"^expected a non-empty 1-D reward tensor, got shape \(2, 1\)$"):
+        helper(torch.tensor([[6.0], [1.1]]))
+
+
+@pytest.mark.parametrize("helper", REWARD_HELPERS, ids=lambda helper: helper.__name__)
+def test_reward_helper_rejects_an_empty_tensor(helper):
+    with pytest.raises(ValueError, match=r"^expected a non-empty 1-D reward tensor, got shape \(0,\)$"):
+        helper(torch.tensor([]))
+
+
+def test_sql_reward_of_exactly_the_threshold_is_not_accurate():
+    rewards = torch.tensor([reward_registry.SQL_ACCURATE_MIN_REWARD])
+
+    assert reward_registry.compute_sql_accuracy(rewards) == pytest.approx(0.0)
+
+
+def test_sql_reward_just_above_the_threshold_is_accurate():
+    threshold = torch.tensor([reward_registry.SQL_ACCURATE_MIN_REWARD])
+
+    rewards = torch.nextafter(threshold, torch.tensor([2.0]))
+
+    assert reward_registry.compute_sql_accuracy(rewards) == pytest.approx(1.0)

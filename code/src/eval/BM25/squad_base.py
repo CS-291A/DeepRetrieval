@@ -33,6 +33,19 @@ def run_index_search_bm25(search_query, topk=50):
     return doc_list
     
 
+def print_recall_summary(recall_at_1, recall_at_5, recall_at_20, recall_at_100):
+    """Print the running Recall@k; report an empty run instead of dividing by zero."""
+    assert len(recall_at_1) == len(recall_at_5) == len(recall_at_20) == len(recall_at_100), \
+        "recall lists out of step: every scored query appends to all of them"
+    if not recall_at_1:
+        print("Recall: no queries scored")
+        return
+    print(f"Recall@1: {sum(recall_at_1) / len(recall_at_1)}")
+    print(f"Recall@5: {sum(recall_at_5) / len(recall_at_5)}")
+    print(f"Recall@20: {sum(recall_at_20) / len(recall_at_20)}")
+    print(f"Recall@100: {sum(recall_at_100) / len(recall_at_100)}")
+
+
 def main():
         
     test_path = "data/raw_data/squad/test.jsonl"
@@ -73,13 +86,7 @@ def main():
         recall_at_50.append(1) if rank <= 50 else recall_at_50.append(0)
         recall_at_100.append(1) if rank <= 100 else recall_at_100.append(0)
             
-        try:
-            print(f"Recall@1: {sum(recall_at_1) / len(recall_at_1)}")
-            print(f"Recall@5: {sum(recall_at_5) / len(recall_at_5)}")
-            print(f"Recall@20: {sum(recall_at_20) / len(recall_at_20)}")
-            print(f"Recall@100: {sum(recall_at_100) / len(recall_at_100)}")
-        except Exception:
-            continue
+        print_recall_summary(recall_at_1, recall_at_5, recall_at_20, recall_at_100)
         
 
 if __name__ == "__main__":

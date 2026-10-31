@@ -3,6 +3,7 @@
 `requests.get` is replaced (autospec) by small fake servers; nothing touches the network.
 """
 import json
+import logging
 import re
 from unittest import mock
 
@@ -230,3 +231,46 @@ def test_ctgov_search_retries_after_a_timeout():
         nctids = api.search_with_keywords("asthma", topk=3000)
 
     assert nctids == ["NCT00000000", "NCT00000001"]
+
+
+# ---------------------------------------------------------------- logging (audit 3, item 6)
+
+
+def _warnings_from(caplog, module):
+    return [r for r in caplog.records if r.name == module.__name__ and r.levelno == logging.WARNING]
+
+
+def test_pubmed_search_logs_retry_at_warning(caplog):
+    api = pubmed.PubmedAPI(retry=1, request_delay=0)
+
+    with _patch_get(pubmed, FakeESearch(total=5, failing_calls={0})), caplog.at_level(logging.DEBUG):
+        api.search_with_keywords("cancer", topk=3000)
+
+    assert any("Retry 1" in r.getMessage() for r in _warnings_from(caplog, pubmed))
+
+
+def test_pubmed_search_logs_failed_attempt_at_warning_with_traceback(caplog):
+    api = pubmed.PubmedAPI(retry=1, request_delay=0)
+
+    with _patch_get(pubmed, FakeESearch(total=5, failing_calls={0})), caplog.at_level(logging.DEBUG):
+        api.search_with_keywords("cancer", topk=3000)
+
+    assert [r.exc_info[0] for r in _warnings_from(caplog, pubmed) if r.exc_info] == [ConnectionResetError]
+
+
+def test_ctgov_search_logs_retry_at_warning(caplog):
+    api = ctgov.CTGovAPI(retry=1, request_delay=0)
+
+    with _patch_get(ctgov, FakeCTGov(total=10, failing_calls={0})), caplog.at_level(logging.DEBUG):
+        api.search_with_keywords("asthma", topk=-1)
+
+    assert any("Retry 1" in r.getMessage() for r in _warnings_from(caplog, ctgov))
+
+
+def test_api_retry_writes_nothing_to_stdout(capsys):
+    api = pubmed.PubmedAPI(retry=1, request_delay=0)
+
+    with _patch_get(pubmed, FakeESearch(total=5, failing_calls={0})):
+        api.search_with_keywords("cancer", topk=3000)
+
+    assert capsys.readouterr().out == ""

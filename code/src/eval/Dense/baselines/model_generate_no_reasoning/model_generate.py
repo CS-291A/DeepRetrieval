@@ -1,5 +1,6 @@
 import argparse
 import json
+import logging
 import os
 import re
 
@@ -8,6 +9,8 @@ import pandas as pd
 import torch
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
+
+logger = logging.getLogger(__name__)
 
 CACHE_DIR = "/srv/local/data/linjc/hub"
 
@@ -53,6 +56,7 @@ def evaluate_model(model, tokenizer, data_path, device, model_name, save_dir, ba
             try:
                 generated_text = generated_text.split("\nAssistant:")[1]
             except Exception:
+                logger.debug("no '\\nAssistant:' marker; splitting on '\\nassistant:'", exc_info=True)
                 generated_text = generated_text.split("\nassistant:")[1]
             
             # findall <answer> </answer>
@@ -65,6 +69,8 @@ def evaluate_model(model, tokenizer, data_path, device, model_name, save_dir, ba
                     # json.loads(generated_text)
                     generated_text = json.loads(generated_text)['query']
                 except Exception:
+                    logger.debug("answer in row %d is not JSON with a 'query' key; using the raw answer text",
+                                 batch_start + i, exc_info=True)
                     generated_text = matches[0]
 
             idx = batch_start + i
@@ -80,6 +86,7 @@ def evaluate_model(model, tokenizer, data_path, device, model_name, save_dir, ba
         json.dump(generated_texts, f, indent=4)
 
 def main():
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s: %(message)s')
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_path", type=str, default="Qwen/Qwen2.5-3B-Instruct")
     parser.add_argument("--data_path", type=str, default="code/data/local_index_search/no_reason/Dense/msmarco_beir/test.parquet")

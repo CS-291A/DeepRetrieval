@@ -81,7 +81,8 @@ def dispatch_megatron_compute(worker_group, *args, **kwargs):
 
     all_args = []
     for arg in args:
-        assert isinstance(arg, (tuple, list)) and len(arg) == worker_group.dp_size
+        assert isinstance(arg, (tuple, list)), f'dispatch_megatron_compute: positional arg must be a tuple or list, got {type(arg).__name__}'
+        assert len(arg) == worker_group.dp_size, f'dispatch_megatron_compute: positional arg has length {len(arg)} != dp_size {worker_group.dp_size}'
         transformed_args = []
         for i in range(worker_group.world_size):
             local_dp_rank = worker_group.get_megatron_rank_info(rank=i).dp_rank
@@ -91,7 +92,8 @@ def dispatch_megatron_compute(worker_group, *args, **kwargs):
 
     all_kwargs = {}
     for k, v in kwargs.items():
-        assert isinstance(v, (tuple, list)) and len(v) == worker_group.dp_size
+        assert isinstance(v, (tuple, list)), f'dispatch_megatron_compute: kwarg {k!r} must be a tuple or list, got {type(v).__name__}'
+        assert len(v) == worker_group.dp_size, f'dispatch_megatron_compute: kwarg {k!r} has length {len(v)} != dp_size {worker_group.dp_size}'
         transformed_v = []
         for i in range(worker_group.world_size):
             local_dp_rank = worker_group.get_megatron_rank_info(rank=i).dp_rank
@@ -174,7 +176,8 @@ def dispatch_megatron_pp_as_dp(worker_group, *args, **kwargs):
 
     all_args = []
     for arg in args:
-        assert isinstance(arg, (list, tuple)) and len(arg) == pp_dp_size
+        assert isinstance(arg, (tuple, list)), f'dispatch_megatron_pp_as_dp: positional arg must be a tuple or list, got {type(arg).__name__}'
+        assert len(arg) == pp_dp_size, f'dispatch_megatron_pp_as_dp: positional arg has length {len(arg)} != pp_size*dp_size {pp_dp_size}'
         transformed_args = []
         for i in range(worker_group.world_size):
             local_dp_rank = worker_group.get_megatron_rank_info(rank=i).dp_rank
@@ -196,7 +199,8 @@ def dispatch_megatron_pp_as_dp(worker_group, *args, **kwargs):
 
     all_kwargs = {}
     for k, v in kwargs.items():
-        assert isinstance(v, (list, tuple)) and len(v) == pp_dp_size, f'expect len(v)=={pp_dp_size}, got {len(v)}'
+        assert isinstance(v, (tuple, list)), f'dispatch_megatron_pp_as_dp: kwarg {k!r} must be a tuple or list, got {type(v).__name__}'
+        assert len(v) == pp_dp_size, f'dispatch_megatron_pp_as_dp: kwarg {k!r} has length {len(v)} != pp_size*dp_size {pp_dp_size}'
         transformed_v = []
         for i in range(worker_group.world_size):
             local_dp_rank = worker_group.get_megatron_rank_info(rank=i).dp_rank
@@ -257,9 +261,11 @@ def dispatch_dp_compute(worker_group, *args, **kwargs):
     from verl.single_controller.base.worker_group import WorkerGroup
     assert isinstance(worker_group, WorkerGroup)
     for arg in args:
-        assert isinstance(arg, (tuple, list)) and len(arg) == worker_group.world_size
+        assert isinstance(arg, (tuple, list)), f'dispatch_dp_compute: positional arg must be a tuple or list, got {type(arg).__name__}'
+        assert len(arg) == worker_group.world_size, f'dispatch_dp_compute: positional arg has length {len(arg)} != world_size {worker_group.world_size}'
     for k, v in kwargs.items():
-        assert isinstance(v, (tuple, list)) and len(v) == worker_group.world_size
+        assert isinstance(v, (tuple, list)), f'dispatch_dp_compute: kwarg {k!r} must be a tuple or list, got {type(v).__name__}'
+        assert len(v) == worker_group.world_size, f'dispatch_dp_compute: kwarg {k!r} has length {len(v)} != world_size {worker_group.world_size}'
     return args, kwargs
 
 

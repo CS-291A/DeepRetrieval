@@ -109,3 +109,63 @@ def test_main_starts_training_when_cluster_has_enough_gpus(monkeypatch):
     main_ppo.main.__wrapped__(config)
 
     assert task.configs == [config]
+
+
+class _FixedDecodeTokenizer:
+    def decode(self, ids):
+        return "<prompt><answer>q</answer>"
+
+
+def _nq_sample():
+    import numpy as np
+    import torch
+
+    from verl import DataProto
+    return DataProto.from_dict(
+        tensors={"prompts": torch.tensor([[1]]), "responses": torch.tensor([[2]]),
+                 "attention_mask": torch.ones(1, 2, dtype=torch.long)},
+        non_tensors={"data_source": np.array(["nq_serini"], dtype=object),
+                     "reward_model": np.array([{"ground_truth": {"target": ["a"]}}], dtype=object)},
+    )
+
+
+def test_reward_manager_logs_examined_samples_at_info_instead_of_printing(monkeypatch, tmp_path, caplog, capsys):
+    monkeypatch.setattr(main_ppo, "PUBMED_API_KEY_PATH", str(tmp_path / "missing.key"))
+    manager = main_ppo.RewardManager(tokenizer=_FixedDecodeTokenizer(), num_examine=1)
+    monkeypatch.setattr(main_ppo.reward_registry.RewardRoute, "compute_score_fn",
+                        lambda self, data_source: lambda **kwargs: 0.0)
+
+    with caplog.at_level(logging.INFO, logger=main_ppo.__name__):
+        manager(_nq_sample())
+
+    info_records = [r.getMessage() for r in caplog.records
+                    if r.name == main_ppo.__name__ and r.levelno == logging.INFO]
+    assert info_records == ["<prompt><answer>q</answer>"]
+    assert capsys.readouterr().out == ""
+
+
+class _StopAfterLoggingSetup(Exception):
+    pass
+
+
+def test_main_configures_logging_before_starting_ray(monkeypatch):
+    events = []
+    _patch_ray(monkeypatch, {"GPU": 1.0})
+    monkeypatch.setattr(main_ppo.ray, "init", lambda **kwargs: events.append("ray.init"))
+    monkeypatch.setattr(main_ppo, "configure_logging", lambda: events.append("configure_logging"))
+
+    main_ppo.main.__wrapped__(_config(n_gpus_per_node=1, nnodes=1))
+
+    assert events == ["configure_logging", "ray.init"]
+
+
+def test_main_task_configures_logging_in_the_ray_worker_first(monkeypatch):
+    # Ray workers do not inherit the driver's logging config, and rewards are computed in main_task.
+    def configure_logging():
+        raise _StopAfterLoggingSetup
+
+    monkeypatch.setattr(main_ppo, "configure_logging", configure_logging)
+
+    with pytest.raises(_StopAfterLoggingSetup):
+        # ray.remote keeps the undecorated function on the RemoteFunction (not in Ray's type stubs)
+        vars(main_ppo.main_task)["_function"](OmegaConf.create({}))

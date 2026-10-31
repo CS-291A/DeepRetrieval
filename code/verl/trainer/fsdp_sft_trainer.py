@@ -357,10 +357,12 @@ import hydra
 from torch.distributed.device_mesh import init_device_mesh
 
 from verl.utils.distributed import initialize_global_process_group
+from verl.utils.logging_utils import configure_logging
 
 
 @hydra.main(config_path='config', config_name='sft_trainer', version_base=None)
 def main(config):
+    configure_logging()
     local_rank, rank, world_size = initialize_global_process_group()
 
     device_mesh = init_device_mesh(device_type='cuda', mesh_shape=(world_size,), mesh_dim_names=('dp',))

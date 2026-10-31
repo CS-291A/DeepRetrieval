@@ -6,6 +6,8 @@ import time
 from collections import deque
 from threading import Lock
 
+logger = logging.getLogger(__name__)
+
 # Add these at the top with other global variables
 _request_times = deque(maxlen=20)  # Track last 20 requests
 _request_lock = Lock()  # Thread-safe lock for request tracking
@@ -18,7 +20,7 @@ def extract_solution(solution_str):
     elif "<|im_start|>assistant" in solution_str:
         processed_str = solution_str.split("<|im_start|>assistant", 1)[1].strip()
     else:
-        print("[Error] Failed to locate model response header")
+        logger.debug('Failed to locate model response header')
         return None, ""
 
     # Regular expression to find the last occurrence of <answer>...</answer>
@@ -28,7 +30,7 @@ def extract_solution(solution_str):
     if matches:
         return matches[-1].strip(), processed_str  # Return the last matched answer
     else:
-        print("[Error] No valid answer tags found")
+        logger.debug('No valid answer tags found')
         return None, processed_str
         
 
@@ -42,7 +44,7 @@ def validate_response_structure(processed_str: str, do_print: bool) -> bool:
         Boolean indicating whether all formatting requirements are met
     """
     if do_print:
-        print("\n[Structure Validation]")
+        logger.debug('[Structure Validation]')
     validation_passed = True
 
     # Check required tags
@@ -59,11 +61,11 @@ def validate_response_structure(processed_str: str, do_print: bool) -> bool:
         positions[tag_name] = pos = processed_str.find(tag_str)
         
         if do_print:
-            print(f"  {tag_str}: count={count}, position={pos}")
+            logger.debug('%s: count=%s, position=%s', tag_str, count, pos)
         
         if count != expected_count:
             if do_print:
-                print(f"  [Error] {tag_str} appears {count} times (expected {expected_count})")
+                logger.debug('%s appears %s times (expected %s)', tag_str, count, expected_count)
             validation_passed = False
 
     # Verify tag order
@@ -71,11 +73,11 @@ def validate_response_structure(processed_str: str, do_print: bool) -> bool:
         positions['think_end'] > positions['answer_start'] or
         positions['answer_start'] > positions['answer_end']):
         if do_print:
-            print("  [Error] Incorrect tag order: Expected <think>...</think><answer>...</answer>")
+            logger.debug('Incorrect tag order: Expected <think>...</think><answer>...</answer>')
         validation_passed = False
     else:
         if do_print:
-            print("  Tag sequence validation passed")
+            logger.debug('Tag sequence validation passed')
     
     return validation_passed
 
@@ -121,7 +123,7 @@ def run_search_ctgov(search_query, search_api):
         
         # Check if we're exceeding rate limit (10 requests per second)
         if len(_request_times) >= 10:
-            print("\033[93m[Warning] CTGov rate limit (10 req/s) reached! Consider reducing batch size.\033[0m")
+            logger.warning('CTGov rate limit (10 req/s) reached! Consider reducing batch size.')
         
         # Record this request
         _request_times.append(current_time)
@@ -139,7 +141,7 @@ def calculate_answer_score(answer_text, label, do_print=False, search_api=None, 
     try:
         pred_query = json.loads(answer_text)["query"]
     except (json.JSONDecodeError, KeyError, TypeError):
-        print("[Error] Error in evaluation")
+        logger.debug('Error in evaluation')
         return -4
     
     # Executing the model's query must never crash training: any failure is logged and scored
@@ -151,7 +153,7 @@ def calculate_answer_score(answer_text, label, do_print=False, search_api=None, 
         recall = len(hit_pmids) / len(label)
     
         if do_print:
-            print(f"Recall: {recall}")
+            logger.debug('Recall: %s', recall)
     
         if recall >= 0.7:
             answer_score = 5
@@ -168,7 +170,7 @@ def calculate_answer_score(answer_text, label, do_print=False, search_api=None, 
         else:
             answer_score = -3.5
     except Exception:
-        logging.getLogger(__name__).exception(f"Search/scoring failed for model query {str(pred_query)[:200]!r}; scoring -4")
+        logger.exception("Search/scoring failed for model query %r; scoring -4", str(pred_query)[:200])
         return -4
 
     return answer_score
@@ -199,9 +201,7 @@ def compute_score(solution_str, ground_truth, format_reward=1, answer_reward=1.,
 
     
     if do_print:
-        print("--------------------------------")
-        print(f"Solution string: {solution_str}")
-        print(f"Target: {label!s} |")
+        logger.info('--------------------------------\nSolution string: %s\nTarget: %s |', solution_str, label)
     
     answer_score = 0
     if format_correct and answer_text:
@@ -209,12 +209,8 @@ def compute_score(solution_str, ground_truth, format_reward=1, answer_reward=1.,
 
     total_score = format_score + answer_score
     if do_print:
-        print("\n" + "-"*80)
-        print(" Final Score ".center(80, '-'))
-        print(f"  Format: {format_score}")
-        print(f"  Answer: {answer_score}")
-        print(f"  Total: {total_score}")
-        print("="*80 + "\n")
+        logger.info('\n%s\n%s\n  Format: %s\n  Answer: %s\n  Total: %s\n%s', "-" * 80, " Final Score ".center(80, '-'),
+                    format_score, answer_score, total_score, "=" * 80)
 
     return total_score
     

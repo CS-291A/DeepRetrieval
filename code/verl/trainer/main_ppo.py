@@ -32,9 +32,11 @@ import utils.java_init  # noqa: F401  (imported for its side effect: sets JAVA_H
 import torch
 
 from verl import DataProto
+from verl.trainer import reward_registry
 from verl.trainer.ppo.ray_trainer import RayPPOTrainer
 from verl.utils.apis.ctgov import CTGovAPI
 from verl.utils.apis.pubmed import PubmedAPI
+from verl.utils.logging_utils import configure_logging
 
 logger = logging.getLogger(__name__)
 
@@ -42,97 +44,8 @@ logger = logging.getLogger(__name__)
 PUBMED_API_KEY_PATH = os.path.join(project_root, 'verl', 'utils', 'reward_score', 'apis', 'pubmed_api.key')
     
 def _select_rm_score_fn(data_source) -> Callable:
-
-    if "screening" in data_source:
-        from verl.utils.reward_score import screening
-        return screening.compute_score
-    elif "pubmed" in data_source:
-        from verl.utils.reward_score import pubmed
-        return pubmed.compute_score
-    elif "pmd_no_reason" in data_source:
-        from verl.utils.reward_score import pmd_no_reason
-        return pmd_no_reason.compute_score
-    elif "ctgov" in data_source:
-        from verl.utils.reward_score import ctgov
-        return ctgov.compute_score
-    elif 'fiqa' in data_source:
-        from verl.utils.reward_score import fiqa
-        return fiqa.compute_score
-    elif 'scifact' in data_source:
-        if 'dense' in data_source:
-            from verl.utils.reward_score_dense import scifact
-            return scifact.compute_score
-        else:
-            from verl.utils.reward_score import scifact
-            return scifact.compute_score
-    elif 'nfcorpus' in data_source:
-        if 'dense' in data_source:
-            from verl.utils.reward_score_dense import nfcorpus
-            return nfcorpus.compute_score
-        else:
-            from verl.utils.reward_score import nfcorpus
-            return nfcorpus.compute_score
-    elif 'nq_serini' in data_source:
-        if 'no_reason' in data_source:
-            from verl.utils.reward_score import nq_no_reason
-            return nq_no_reason.compute_score
-        else:
-            from verl.utils.reward_score import nq_serini
-            return nq_serini.compute_score
-    elif 'triviaqa' in data_source:
-        if 'no_reason' in data_source:
-            from verl.utils.reward_score import tqa_no_reason
-            return tqa_no_reason.compute_score
-        else:
-            from verl.utils.reward_score import triviaqa
-            return triviaqa.compute_score
-    elif 'squad' in data_source:
-        if 'no_reason' in data_source:
-            from verl.utils.reward_score import squad_no_reason
-            return squad_no_reason.compute_score
-        else:
-            from verl.utils.reward_score import squad
-        return squad.compute_score
-    elif 'hotpotqa' in data_source:
-        if 'dense' in data_source:
-            from verl.utils.reward_score_dense import hotpotqa
-            return hotpotqa.compute_score
-        else:
-            from verl.utils.reward_score import hotpotqa
-            return hotpotqa.compute_score
-    elif 'fever' in data_source:
-        if 'dense' in data_source:
-            from verl.utils.reward_score_dense import fever
-            return fever.compute_score
-        else:
-            from verl.utils.reward_score import fever
-            return fever.compute_score
-    elif 'msmarco_beir' in data_source:
-        if 'dense' in data_source:
-            from verl.utils.reward_score_dense import msmarco_beir
-            return msmarco_beir.compute_score
-        else:
-            from verl.utils.reward_score import msmarco_beir
-            return msmarco_beir.compute_score
-    elif 'msmarco' in data_source:
-        from verl.utils.reward_score import msmarco
-        return msmarco.compute_score
-    elif 'bird' in data_source:
-        if 'wor' in data_source:
-            from verl.utils.reward_score import bird_no_reason
-            return bird_no_reason.compute_score
-        else:
-            from verl.utils.reward_score import bird
-            return bird.compute_score
-    elif 'spider' in data_source:
-        if 'wor' in data_source:
-            from verl.utils.reward_score import spider_no_reason
-            return spider_no_reason.compute_score
-        else:
-            from verl.utils.reward_score import spider
-            return spider.compute_score
-    else:
-        raise NotImplementedError(f"No reward function for data_source '{data_source}'")
+    """The compute_score for data_source (see verl/trainer/reward_registry.py); NotImplementedError if none."""
+    return reward_registry.select_compute_score(data_source)
 
 
 class RewardManager:
@@ -151,8 +64,8 @@ class RewardManager:
             with open(PUBMED_API_KEY_PATH, 'r') as f:
                 api_key = f.read().strip()
         else:
-            logger.warning(f'PubMed API key not found at {PUBMED_API_KEY_PATH}; using keyless PubMed requests '
-                           '(NCBI allows 3 req/s without a key instead of 10).')
+            logger.warning('PubMed API key not found at %s; using keyless PubMed requests '
+                           '(NCBI allows 3 req/s without a key instead of 10).', PUBMED_API_KEY_PATH)
         self.pubmed_api = PubmedAPI(api_key=api_key)
         self.ctgov_api = CTGovAPI()
         
@@ -167,6 +80,7 @@ class RewardManager:
         reward_tensor = torch.zeros_like(data.batch['responses'], dtype=torch.float32)
 
         already_print_data_sources = {}
+        search_apis = reward_registry.SearchApis(pubmed=self.pubmed_api, ctgov=self.ctgov_api)
 
         for i in range(len(data)):
             data_item = data[i]  # DataProtoItem
@@ -191,28 +105,11 @@ class RewardManager:
             # select rm_score
             data_source = data_item.non_tensor_batch['data_source']
             
-            compute_score_fn = _select_rm_score_fn(data_source)
+            route = reward_registry.require_route(data_source)
+            compute_score_fn = route.compute_score_fn(data_source)
+            extra_kwargs = route.build_kwargs(data_item.non_tensor_batch, data_source, search_apis)
+            score = compute_score_fn(solution_str=sequences_str, ground_truth=ground_truth, **extra_kwargs)
 
-            if 'pubmed' in data_source or 'ctgov' in data_source or 'pmd_no_reason' in data_source:
-                pub_date = data_item.non_tensor_batch['pub_date']
-                literature_type = 'publication' if ('pubmed' in data_source or 'pmd_no_reason' in data_source) else 'trial'
-                if literature_type == 'publication':
-                    api = self.pubmed_api
-                elif literature_type == 'trial':
-                    api = self.ctgov_api
-                else:
-                    raise ValueError('Invalid literature type.')
-                score = compute_score_fn(solution_str=sequences_str, ground_truth=ground_truth, search_api=api, literature_type=literature_type, pub_date=pub_date)
-            elif 'scifact' in data_source or 'fiqa' in data_source or 'nfcorpus' in data_source or 'hotpotqa' in data_source \
-                    or 'fever' in data_source or 'msmarco' in data_source:
-                score = compute_score_fn(solution_str=sequences_str, ground_truth=ground_truth, data_source=data_source)
-            elif 'bird' in data_source or 'spider' in data_source:
-                db_path = data_item.non_tensor_batch['extra_info']['db_path']
-                score = compute_score_fn(solution_str=sequences_str, ground_truth=ground_truth, data_source=data_source, db_path=db_path)
-            else:
-                score = compute_score_fn(solution_str=sequences_str, ground_truth=ground_truth)
-            
-            
             reward_tensor[i, valid_response_length - 1] = score
 
             if data_source not in already_print_data_sources:
@@ -220,7 +117,7 @@ class RewardManager:
 
             if already_print_data_sources[data_source] < self.num_examine:
                 already_print_data_sources[data_source] += 1
-                print(sequences_str)
+                logger.info('%s', sequences_str)
 
         return reward_tensor
 
@@ -231,6 +128,7 @@ import ray
 
 @hydra.main(config_path='config', config_name='ppo_trainer', version_base=None)
 def main(config):
+    configure_logging()
     if not ray.is_initialized():
         # this is for local ray cluster
         ray.init(runtime_env={'env_vars': {'TOKENIZERS_PARALLELISM': 'true', 'NCCL_DEBUG': 'WARN'}})
@@ -247,6 +145,7 @@ def main(config):
 
 @ray.remote
 def main_task(config):
+    configure_logging()  # Ray workers do not inherit the driver's logging config; rewards log from here
     # print initial config
     from pprint import pprint
 

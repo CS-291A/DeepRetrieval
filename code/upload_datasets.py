@@ -42,8 +42,8 @@ def create_huggingface_repo(repo_id, token, repo_type="dataset"):
         create_repo(repo_id=repo_id, token=token, repo_type=repo_type, exist_ok=True)
         logger.info(f"Repository '{repo_id}' created/confirmed.")
         return True
-    except Exception as e:
-        logger.error(f"Failed to create repository '{repo_id}': {e!s}")
+    except Exception:
+        logger.exception("Failed to create repository %r", repo_id)
         return False
 
 def should_skip_path(path, skip_patterns):
@@ -131,8 +131,8 @@ def upload_category(source_path, target_path, repo_id, token, verbose=False, dry
             logger.info(f"Successfully uploaded {total_files} files to {repo_id}/{target_path}")
             return True
             
-    except Exception as e:
-        logger.error(f"Error uploading '{source_path}': {e!s}")
+    except Exception:
+        logger.exception("Error uploading %r", source_path)
         return False
 
 def main():

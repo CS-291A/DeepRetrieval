@@ -45,8 +45,8 @@ def list_available_files(repo_id, token=None):
         # For public repositories, token is not needed
         files = list_repo_files(repo_id=repo_id, token=token, repo_type="dataset")
         return files
-    except Exception as e:
-        logger.error(f"Error listing files from repository: {e!s}")
+    except Exception:
+        logger.exception("Error listing files from repository %s", repo_id)
         logger.info("If this is a public repository, you can ignore token-related errors.")
         return []
 
@@ -102,8 +102,8 @@ def download_files(repo_id, files, output_dir, token=None, verbose=False):
                 logger.info(f"Downloaded {file}")
             
             downloaded += 1
-        except Exception as e:
-            logger.error(f"Error downloading {file}: {e!s}")
+        except Exception:
+            logger.exception("Error downloading %s", file)
             failed += 1
     
     logger.info(f"Downloaded {downloaded} files. {failed} files failed.")
@@ -140,8 +140,8 @@ def download_category(repo_id, category, output_dir, token=None, datasets=None, 
         downloaded, _ = download_files(repo_id, category_files, output_dir, token, verbose)
         
         return downloaded
-    except Exception as e:
-        logger.error(f"Error downloading category '{category}': {e!s}")
+    except Exception:
+        logger.exception("Error downloading category %r", category)
         return 0
 
 def main():

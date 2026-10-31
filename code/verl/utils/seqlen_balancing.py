@@ -194,7 +194,8 @@ def log_seqlen_unbalance(seqlen_list: list[int], partitions: list[list[int]], pr
         if max_sum_seqlen is None or cur_sum_seqlen > max_sum_seqlen:
             max_sum_seqlen = cur_sum_seqlen
         total_sum_seqlen += cur_sum_seqlen
-    assert min_sum_seqlen is not None and max_sum_seqlen is not None, 'seqlen_list must not be empty'
+    assert min_sum_seqlen is not None, 'seqlen_list must not be empty (no minimum partition sum)'
+    assert max_sum_seqlen is not None, 'seqlen_list must not be empty (no maximum partition sum)'
 
     balanced_sum_seqlen_list = []
     for partition in partitions:

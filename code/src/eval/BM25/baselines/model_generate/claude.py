@@ -1,5 +1,6 @@
 import argparse
 import json
+import logging
 import os
 import sys
 
@@ -13,7 +14,10 @@ sys.path.append('./')
 
 from src.utils.claude_aws import chat_haiku, chat_sonnet
 
+logger = logging.getLogger(__name__)
+
 if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s: %(message)s')
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_name', type=str, default='claude-3.5', choices=['claude-3.5', 'claude-haiku'])
     parser.add_argument('--save_dir', type=str, default='../results')
@@ -30,10 +34,12 @@ if __name__ == '__main__':
     try:
         targets = df['target'].tolist()
     except Exception:
+        logger.info("no 'target' column; using 'label'")
         targets = df['label'].tolist()
     try:
         qids = df['qid'].tolist()
     except Exception:
+        logger.info("no 'qid' column; using the row index as qid")
         qids = list(range(len(df)))
 
     # if targets[i] is a array, then convert to list
@@ -75,9 +81,9 @@ if __name__ == '__main__':
                     decoded = chat_haiku(prompt)
                 
                 break
-            except Exception as e:
-                print(e)
+            except Exception:
                 attempts += 1
+                logger.warning("API call failed for qid %s (attempt %d/10)", qids[idx], attempts, exc_info=True)
                 continue
         
         output_dict[qids[idx]] = {

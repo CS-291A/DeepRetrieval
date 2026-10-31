@@ -155,8 +155,10 @@ def create_random_mask(input_ids: torch.Tensor,
     Returns:
 
     """
-    assert max_ratio_of_valid_token > 0 and max_ratio_of_valid_token <= 1.
-    assert max_ratio_of_left_padding >= 0 and max_ratio_of_left_padding < 1.
+    assert max_ratio_of_valid_token > 0, f'max_ratio_of_valid_token must be > 0, got {max_ratio_of_valid_token}'
+    assert max_ratio_of_valid_token <= 1., f'max_ratio_of_valid_token must be <= 1, got {max_ratio_of_valid_token}'
+    assert max_ratio_of_left_padding >= 0, f'max_ratio_of_left_padding must be >= 0, got {max_ratio_of_left_padding}'
+    assert max_ratio_of_left_padding < 1., f'max_ratio_of_left_padding must be < 1, got {max_ratio_of_left_padding}'
     assert min_ratio_of_valid_token <= max_ratio_of_valid_token
 
     batch_size, sequence_length = input_ids.shape
@@ -164,7 +166,9 @@ def create_random_mask(input_ids: torch.Tensor,
     min_num_valid_tokens = max(1, int(sequence_length * min_ratio_of_valid_token))
     max_left_padding = int(sequence_length * max_ratio_of_left_padding)
     assert max_num_valid_tokens + max_left_padding <= sequence_length
-    assert max_num_valid_tokens > 0 and max_ratio_of_valid_token <= sequence_length
+    assert max_num_valid_tokens > 0, f'max_num_valid_tokens must be > 0, got {max_num_valid_tokens} for seq_len {sequence_length}'
+    assert max_ratio_of_valid_token <= sequence_length, \
+        f'max_ratio_of_valid_token {max_ratio_of_valid_token} exceeds sequence_length {sequence_length}'
     masks = torch.ones_like(input_ids, dtype=torch.int64)
     # TODO: we can make this faster
     for i in range(batch_size):

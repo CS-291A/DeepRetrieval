@@ -22,6 +22,7 @@ import numpy as np
 import pandas as pd
 
 from verl.utils.fs import copy_local_path_from_hdfs
+from verl.utils.logging_utils import configure_logging
 
 
 def select_reward_fn(data_source):
@@ -38,6 +39,7 @@ def select_reward_fn(data_source):
 
 @hydra.main(config_path='config', config_name='evaluation', version_base=None)
 def main(config):
+    configure_logging()
     local_path = copy_local_path_from_hdfs(config.data.path)
     dataset = pd.read_parquet(local_path)
     prompts = dataset[config.data.prompt_key]
