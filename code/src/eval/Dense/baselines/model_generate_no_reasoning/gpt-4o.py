@@ -12,12 +12,13 @@ tqdm.pandas()
 sys.path.append('./')
 
 from src.utils.gpt_azure import gpt_chat_4o, gpt_chat_35_msg
+from verl.utils.paths import data_path
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_name', type=str, default='gpt-35', choices=['gpt-35', 'gpt-4o'])
     parser.add_argument('--save_dir', type=str, default='../results_dense/no_reason')
-    parser.add_argument("--data_path", type=str, default="data/local_index_search/no_reason/Dense/scifact/test.parquet")
+    parser.add_argument("--data_path", type=str, default=str(data_path("local_index_search/no_reason/Dense/scifact/test.parquet")))
     parser.add_argument('--dataset', type=str, default='scifact')
     args = parser.parse_args()
     

@@ -5,6 +5,8 @@ import random
 import re
 import sys
 
+from verl.utils.paths import DATA_DIR_ENV, data_path
+
 logger = logging.getLogger(__name__)
 
 sys.path.append('./')
@@ -14,11 +16,13 @@ from src.Lucene.utils import ndcg_at_k
 
 DATASET_NAME = "fiqa"
 
-if not os.path.exists(f"data/local_index_search/{DATASET_NAME}/pyserini_index"):
-    logger.warning('Pyserini index not found for %s', DATASET_NAME)
+INDEX_DIR = str(data_path(f"local_index_search/{DATASET_NAME}/pyserini_index"))
+if not os.path.exists(INDEX_DIR):
+    logger.warning('Pyserini index not found for %s at %s (data dir: $%s, default <code>/data)',
+                   DATASET_NAME, INDEX_DIR, DATA_DIR_ENV)
     search_system = None
 else:
-    search_system = PyseriniMultiFieldSearch(index_dir=f"data/local_index_search/{DATASET_NAME}/pyserini_index")
+    search_system = PyseriniMultiFieldSearch(index_dir=INDEX_DIR)
 
 
 def extract_solution(solution_str):

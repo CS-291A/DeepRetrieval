@@ -1,10 +1,13 @@
-export CUDA_VISIBLE_DEVICES=0,1,2,3
+#!/bin/sh
+# common.sh: loads code/.env, defaults DEEPRETRIEVAL_DATA_DIR, creates exp_log/, cd code/.
+# GPUs: all visible ones are used; export CUDA_VISIBLE_DEVICES first to restrict them.
+. "$(dirname "$0")/../common.sh" || exit 1
 
 DATE=$(date '+%Y-%m-%d-%H-%M-%S')
 
 python3 -m verl.trainer.main_ppo \
-    data.train_files=data/search_engine/ctgov_32/train.parquet \
-    data.val_files=data/search_engine/ctgov_32/test.parquet \
+    data.train_files="$DEEPRETRIEVAL_DATA_DIR"/search_engine/ctgov_32/train.parquet \
+    data.val_files="$DEEPRETRIEVAL_DATA_DIR"/search_engine/ctgov_32/test.parquet \
     data.train_batch_size=64 \
     data.val_batch_size=64 \
     data.max_prompt_length=500 \
@@ -36,4 +39,4 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.model.path=/shared/eng/pj20/lmr_model/pubmed_32_continue/actor/global_step_1200 \
     critic.model.path=/shared/eng/pj20/lmr_model/pubmed_32_continue/critic/global_step_1200 \
     trainer.default_local_dir=/shared/eng/pj20/lmr_model/ctgov_32_transfer \
-    trainer.total_epochs=10 2>&1 | tee exp_log/32-ppo-verl_demo_$DATE.log 
+    trainer.total_epochs=10 2>&1 | tee exp_log/32-ppo-verl_demo_"$DATE".log 

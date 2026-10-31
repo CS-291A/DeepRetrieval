@@ -10,6 +10,7 @@ sys.path.append('code')
 import os
 
 from src.Dense.utils import average_pool
+from verl.utils.paths import data_path
 
 
 def get_detailed_instruct(task_description: str, query: str) -> str:
@@ -62,8 +63,8 @@ def process_corpus(jsonl_path, output_dir):
     print(f"Embeddings saved to {embedding_output}, Doc IDs saved to {doc_ids_output}")
 
 
-ori_data_dir = "code/data/raw_data/scifact/corpus.jsonl"
-output_dir = "code/data/local_index_search/scifact/dense"
+ori_data_dir = str(data_path("raw_data/scifact/corpus.jsonl"))
+output_dir = str(data_path("local_index_search/scifact/dense"))
 
 os.makedirs(output_dir, exist_ok=True)
 

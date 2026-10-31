@@ -13,6 +13,7 @@ tqdm.pandas()
 sys.path.append('./')
 
 from src.utils.claude_aws import chat_haiku, chat_sonnet
+from verl.utils.paths import data_path
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_name', type=str, default='claude-3.5', choices=['claude-3.5', 'claude-haiku'])
     parser.add_argument('--save_dir', type=str, default='../results')
-    parser.add_argument("--data_path", type=str, default="data/local_index_search/scifact/sparse/test.parquet")
+    parser.add_argument("--data_path", type=str, default=str(data_path("local_index_search/scifact/sparse/test.parquet")))
     parser.add_argument('--dataset', type=str, default='scifact')
     args = parser.parse_args()
     

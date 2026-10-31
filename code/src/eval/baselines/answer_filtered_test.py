@@ -18,6 +18,8 @@ from pyserini.eval.evaluate_dpr_retrieval import SimpleTokenizer, has_answers
 # Add these at the top with other global variables
 from pyserini.search.lucene import LuceneSearcher
 
+from verl.utils import paths
+
 _searcher = None
 _tokenizer = SimpleTokenizer()
 
@@ -475,7 +477,7 @@ def main():
     
     for dataset in args.datasets:
         all_results[dataset] = {}
-        data_path = f"data/local_index_search/{dataset}/test.parquet"
+        data_path = str(paths.data_path(f"local_index_search/{dataset}/test.parquet"))
         
         for model in args.models:
             generations_path = f"results/generations/{dataset}_{model}_generations.json"

@@ -9,6 +9,7 @@ sys.path.append('./')
 from pyserini.search.lucene import LuceneSearcher
 
 from src.Lucene.utils import ndcg_at_k
+from verl.utils.paths import data_path
 
 index_dir = "indexes/lucene-index-msmarco-passage"
 # dense_encoder_name = "castorini/tct_colbert-msmarco"
@@ -33,15 +34,15 @@ def load_matching_dataset(domain):
     data_test = []
     data_val = []
     
-    with open(f'data/raw_data/msmarco/msmarco_{domain}/train.jsonl', 'r') as f:
+    with open(str(data_path(f'raw_data/msmarco/msmarco_{domain}/train.jsonl')), 'r') as f:
         for line in f:
             data_train.append(json.loads(line))
 
-    with open(f'data/raw_data/msmarco/msmarco_{domain}/dev.jsonl', 'r') as f:
+    with open(str(data_path(f'raw_data/msmarco/msmarco_{domain}/dev.jsonl')), 'r') as f:
         for line in f:
             data_test.append(json.loads(line))
             
-    with open(f'data/raw_data/msmarco/msmarco_{domain}/dev.jsonl', 'r') as f:
+    with open(str(data_path(f'raw_data/msmarco/msmarco_{domain}/dev.jsonl')), 'r') as f:
         cnt = 0
         for line in f:
             data_val.append(json.loads(line))

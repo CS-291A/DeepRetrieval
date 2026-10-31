@@ -1,4 +1,7 @@
-export CUDA_VISIBLE_DEVICES=2,3
+#!/bin/sh
+# common.sh: loads code/.env, defaults DEEPRETRIEVAL_DATA_DIR, creates exp_log/, cd code/.
+# GPUs: all visible ones are used; export CUDA_VISIBLE_DEVICES first to restrict them.
+. "$(dirname "$0")/../common.sh" || exit 1
 
 PROJECT_NAME=triviaqa_search
 EXP_NAME=triviaqa_search_3b
@@ -6,8 +9,8 @@ EXP_NAME=triviaqa_search_3b
 DATE=$(date '+%Y-%m-%d-%H-%M-%S')
 
 python3 -m verl.trainer.main_ppo \
-    data.train_files=data/local_index_search/triviaqa/train.parquet \
-    data.val_files=data/local_index_search/triviaqa/val.parquet \
+    data.train_files="$DEEPRETRIEVAL_DATA_DIR"/local_index_search/triviaqa/train.parquet \
+    data.val_files="$DEEPRETRIEVAL_DATA_DIR"/local_index_search/triviaqa/val.parquet \
     data.train_batch_size=64 \
     data.val_batch_size=64 \
     data.max_prompt_length=256 \
@@ -40,4 +43,4 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.model.path=/shared/eng/pj20/lmr_model/nq_serini_3b/actor/global_step_1800  \
     critic.model.path=/shared/eng/pj20/lmr_model/nq_serini_3b/critic/global_step_1800  \
     trainer.default_local_dir=/shared/eng/pj20/lmr_model/triviaqa_3b_nq_1800 \
-    trainer.total_epochs=5 2>&1 | tee exp_log/$PROJECT_NAME-3b-ppo-verl_demo_$DATE.log 
+    trainer.total_epochs=5 2>&1 | tee exp_log/$PROJECT_NAME-3b-ppo-verl_demo_"$DATE".log 

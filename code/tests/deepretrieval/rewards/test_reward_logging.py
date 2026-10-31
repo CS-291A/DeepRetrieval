@@ -156,7 +156,9 @@ def test_missing_index_is_logged_at_warning(load_reward_module, caplog):
     with caplog.at_level(logging.DEBUG, logger=module_name):
         load_reward_module(module_name)  # imported from an empty cwd, so no index exists
 
-    assert _records(caplog, module_name, logging.WARNING) == ["Pyserini index not found for scifact"]
+    messages = _records(caplog, module_name, logging.WARNING)
+    assert len(messages) == 1
+    assert messages[0].startswith("Pyserini index not found for scifact at ")  # + the resolved path and data-dir var
 
 
 def _is_main_guard(node):

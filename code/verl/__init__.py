@@ -14,6 +14,10 @@
 
 import os
 
+# Before anything imports ray (`.protocol` below does): Ray reads this once at import, and when on
+# under `uv run` it re-ships the cwd to workers honouring .gitignore, hiding data/ (smoke test S2).
+os.environ.setdefault("RAY_ENABLE_UV_RUN_RUNTIME_ENV", "0")
+
 version_folder = os.path.dirname(os.path.join(os.path.abspath(__file__)))
 
 with open(os.path.join(version_folder, 'version/version')) as f:

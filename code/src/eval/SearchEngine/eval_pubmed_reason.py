@@ -58,7 +58,9 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from src.utils.claude_api import get_claude_response
 from src.utils.gpt_azure import gpt_chat_4o, gpt_chat_35_msg
+from verl.utils import credentials
 from verl.utils.apis.pubmed import PubmedAPI
+from verl.utils.paths import data_path
 
 # Add these at the top with other global variables
 _request_times = deque(maxlen=20)  # Track last 20 requests
@@ -266,13 +268,13 @@ def process_batch(batch_data, search_api, llm):
 def main():
     args = arg_parser()
     
-    if os.path.exists('verl/utils/reward_score/apis/pubmed_api.key'):
-        api_key = open('verl/utils/reward_score/apis/pubmed_api.key', 'r').read().strip()
-        search_api = PubmedAPI(api_key=api_key)
-    else:
-        raise FileNotFoundError(f"PubMed API key not found: {os.path.abspath('verl/utils/reward_score/apis/pubmed_api.key')}")
+    api_key = credentials.load_pubmed_api_key()
+    if api_key is None:
+        raise FileNotFoundError(f"PubMed API key not found: set ${credentials.PUBMED_API_KEY_ENV} "
+                                f"or create {credentials.DEFAULT_PUBMED_API_KEY_PATH}")
+    search_api = PubmedAPI(api_key=api_key)
         
-    test_path = "data/raw_data/pubmed/test.jsonl"
+    test_path = str(data_path("raw_data/pubmed/test.jsonl"))
     test_data = []
     with open(test_path, 'r') as f:
         for line in f:

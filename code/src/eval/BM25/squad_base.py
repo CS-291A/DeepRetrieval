@@ -1,5 +1,7 @@
 import json
 
+from verl.utils.paths import data_path
+
 try:
     import utils.java_init  # noqa: F401  (imported for its side effect: sets JAVA_HOME)
 except ImportError:
@@ -48,7 +50,7 @@ def print_recall_summary(recall_at_1, recall_at_5, recall_at_20, recall_at_100):
 
 def main():
         
-    test_path = "data/raw_data/squad/test.jsonl"
+    test_path = str(data_path("raw_data/squad/test.jsonl"))
     test_data = []
     with open(test_path, 'r') as f:
         for line in f:

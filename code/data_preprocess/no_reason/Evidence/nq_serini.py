@@ -7,6 +7,7 @@ from typing import Any, cast
 from datasets import Dataset
 
 from verl.utils.hdfs_io import copy, makedirs
+from verl.utils.paths import data_path
 
 INSTRUCTION = """
 You are a query rewriting expert. Your task is to create query terms for user query to find relevant literature in a Wikipedia corpus using BM25.
@@ -40,15 +41,15 @@ def load_matching_dataset():
     data_test = []
     data_val = []
     
-    with open('data/raw_data/nq_serini/train.jsonl', 'r') as f:
+    with open(str(data_path('raw_data/nq_serini/train.jsonl')), 'r') as f:
         for line in f:
             data_train.append(json.loads(line))
 
-    with open('data/raw_data/nq_serini/test.jsonl', 'r') as f:
+    with open(str(data_path('raw_data/nq_serini/test.jsonl')), 'r') as f:
         for line in f:
             data_test.append(json.loads(line))
             
-    with open('data/raw_data/nq_serini/dev.jsonl', 'r') as f:
+    with open(str(data_path('raw_data/nq_serini/dev.jsonl')), 'r') as f:
         cnt = 0
         for line in f:
             data_val.append(json.loads(line))
@@ -65,7 +66,7 @@ def load_matching_dataset():
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--local_dir', default='data/local_index_search/no_reason')
+    parser.add_argument('--local_dir', default=str(data_path('local_index_search/no_reason')))
     parser.add_argument('--hdfs_dir', default=None)
     parser.add_argument('--dataset', type=str, default='nq_serini_no_reason')
 

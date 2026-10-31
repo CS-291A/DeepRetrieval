@@ -15,6 +15,7 @@ project_root = os.path.dirname(os.path.dirname(current_dir))
 sys.path.insert(0, project_root)
 
 from src.sql.spider import SpiderDatabaseSearcher
+from verl.utils.paths import data_path
 
 _searcher = None
 
@@ -166,7 +167,7 @@ def evaluate_model(model, tokenizer, data_path, device, model_name, save_dir, ba
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_path", type=str, default="/dev/ana/training_outputs/spider_3b/actor/global_step_400")
-    parser.add_argument("--data_path", type=str, default="data/sql/spider/test.parquet")
+    parser.add_argument("--data_path", type=str, default=str(data_path("sql/spider/test.parquet")))
     parser.add_argument("--model_name", type=str, default="spider-3b-step-400")
     parser.add_argument("--save_dir", type=str, default="results")
     parser.add_argument("--batch_size", type=int, default=8)

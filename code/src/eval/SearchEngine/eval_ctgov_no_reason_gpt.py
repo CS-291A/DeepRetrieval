@@ -54,6 +54,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from src.utils.claude_api import get_claude_response
 from src.utils.gpt_azure import gpt_chat_4o, gpt_chat_35_msg
 from verl.utils.apis.ctgov import CTGovAPI
+from verl.utils.paths import data_path
 
 # Add these at the top with other global variables
 _request_times = deque(maxlen=20)  # Track last 20 requests
@@ -257,7 +258,7 @@ def main():
     
     search_api = CTGovAPI()
         
-    test_path = "data/raw_data/ctgov/test.jsonl"
+    test_path = str(data_path("raw_data/ctgov/test.jsonl"))
     test_data = []
     with open(test_path, 'r') as f:
         for line in f:

@@ -5,6 +5,8 @@ import random
 import re
 import sys
 
+from verl.utils.paths import DATA_DIR_ENV, data_path
+
 logger = logging.getLogger(__name__)
 
 sys.path.append('./')
@@ -12,11 +14,13 @@ sys.path.append('./')
 from src.Lucene.fever.search import PyseriniMultiFieldSearch
 from src.Lucene.utils import ndcg_at_k
 
-if not os.path.exists("data/local_index_search/fever/pyserini_index"):
-    logger.warning('Pyserini index not found for fever')
+INDEX_DIR = str(data_path("local_index_search/fever/pyserini_index"))
+if not os.path.exists(INDEX_DIR):
+    logger.warning('Pyserini index not found for %s at %s (data dir: $%s, default <code>/data)',
+                   'fever', INDEX_DIR, DATA_DIR_ENV)
     search_system = None
 else:
-    search_system = PyseriniMultiFieldSearch(index_dir="data/local_index_search/fever/pyserini_index")
+    search_system = PyseriniMultiFieldSearch(index_dir=INDEX_DIR)
 
 
 def extract_solution(solution_str):

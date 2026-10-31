@@ -8,6 +8,7 @@ from typing import Any, cast
 from datasets import Dataset
 
 from verl.utils.hdfs_io import copy, makedirs
+from verl.utils.paths import data_path, stored_data_reference
 
 # prompt reference: https://github.com/AlibabaResearch/DAMO-ConvAI/blob/main/bird/llm/src/gpt_request.py
 
@@ -37,9 +38,9 @@ def nice_look_table(column_names: list, values: list):
 def generate_schema_prompt(db_id, split, num_rows=None):
 
     if split == 'train':
-        db_path = f'data/raw_data/bird/train/train_databases/{db_id}/{db_id}.sqlite'
+        db_path = str(data_path(f'raw_data/bird/train/train_databases/{db_id}/{db_id}.sqlite'))
     elif split == 'val' or split == 'test':
-        db_path = f'data/raw_data/bird/dev/dev_databases/{db_id}/{db_id}.sqlite'
+        db_path = str(data_path(f'raw_data/bird/dev/dev_databases/{db_id}/{db_id}.sqlite'))
     else:
         raise ValueError(f"unknown split: {split!r}")
 
@@ -138,13 +139,13 @@ Let me write the SQL query with reasoning.
 
 def load_bird_dataset():
     
-    with open('data/raw_data/bird/train/train.json', 'r') as f:
+    with open(str(data_path('raw_data/bird/train/train.json')), 'r') as f:
         data_train = json.load(f)
 
-    with open('data/raw_data/bird/dev/dev.json', 'r') as f:
+    with open(str(data_path('raw_data/bird/dev/dev.json')), 'r') as f:
         data_test = json.load(f)
             
-    with open('data/raw_data/bird/dev/dev.json', 'r') as f:
+    with open(str(data_path('raw_data/bird/dev/dev.json')), 'r') as f:
         data_val = json.load(f)[:100]
     
     train_data = [{'question': x['question'], 'db_id': x['db_id'], 'knowledge': x['evidence'], 'sql': x['SQL']} for x in data_train]
@@ -156,10 +157,10 @@ def load_bird_dataset():
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--local_dir', default='data/sql')
+    parser.add_argument('--local_dir', default=str(data_path('sql')))
     parser.add_argument('--hdfs_dir', default=None)
     parser.add_argument('--dataset', type=str, default='bird')
-    parser.add_argument('--output_dir', type=str, default='data/sql')
+    parser.add_argument('--output_dir', type=str, default=str(data_path('sql')))
 
     args = parser.parse_args()
     
@@ -181,9 +182,9 @@ if __name__ == '__main__':
 
             db_id = example['db_id']
             if split == 'train':
-                db_path = f'data/raw_data/bird/train/train_databases/{db_id}/{db_id}.sqlite'
+                db_path = stored_data_reference(f'raw_data/bird/train/train_databases/{db_id}/{db_id}.sqlite')
             elif split == 'val' or split == 'test':
-                db_path = f'data/raw_data/bird/dev/dev_databases/{db_id}/{db_id}.sqlite'
+                db_path = stored_data_reference(f'raw_data/bird/dev/dev_databases/{db_id}/{db_id}.sqlite')
             else:
                 raise ValueError(f"unknown split: {split!r}")
 

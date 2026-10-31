@@ -1,20 +1,24 @@
+#!/bin/sh
+# common.sh: loads code/.env, defaults DEEPRETRIEVAL_DATA_DIR, creates exp_log/, cd code/.
+# GPUs: all visible ones are used; export CUDA_VISIBLE_DEVICES first to restrict them.
+. "$(dirname "$0")/../common.sh" || exit 1
+
 export HYDRA_FULL_ERROR=1
-# export CUDA_VISIBLE_DEVICES=0,1
-export CUDA_VISIBLE_DEVICES=2,3
 
 PROJECT_NAME=msmarco_search
 domain=health
 # domain=tech
 # domain=science
 retrieval_mode=dense
+# shellcheck disable=SC2034 # records the dense encoder this run expects; not passed on
 encoder=contriever
 EXP_NAME=msmarco_search_3b_${domain}_${retrieval_mode}
 
 DATE=$(date '+%Y-%m-%d-%H-%M-%S')
 
 python3 -m verl.trainer.main_ppo \
-    data.train_files=data/local_index_search/msmarco_${domain}/${retrieval_mode}/train.parquet \
-    data.val_files=data/local_index_search/msmarco_${domain}/${retrieval_mode}/test.parquet \
+    data.train_files="$DEEPRETRIEVAL_DATA_DIR"/local_index_search/msmarco_${domain}/${retrieval_mode}/train.parquet \
+    data.val_files="$DEEPRETRIEVAL_DATA_DIR"/local_index_search/msmarco_${domain}/${retrieval_mode}/test.parquet \
     data.train_batch_size=64 \
     data.val_batch_size=64 \
     data.max_prompt_length=256 \
@@ -47,4 +51,4 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.model.path=Qwen/Qwen2.5-3B-Instruct \
     critic.model.path=Qwen/Qwen2.5-3B-Instruct \
     trainer.default_local_dir=/dev/ana/training_outputs/${EXP_NAME} \
-    trainer.total_epochs=5 2>&1 | tee exp_log/$PROJECT_NAME-3b-ppo-verl_demo_$DATE.log 
+    trainer.total_epochs=5 2>&1 | tee exp_log/$PROJECT_NAME-3b-ppo-verl_demo_"$DATE".log 

@@ -10,6 +10,8 @@ import torch
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from verl.utils.paths import data_path
+
 logger = logging.getLogger(__name__)
 
 CACHE_DIR = "/srv/local/data/linjc/hub"
@@ -97,7 +99,7 @@ def main():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s: %(message)s')
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_path", type=str, default="Qwen/Qwen2.5-3B-Instruct")
-    parser.add_argument("--data_path", type=str, default="code/data/local_index_search/msmarco_health/sparse/test.parquet")
+    parser.add_argument("--data_path", type=str, default=str(data_path("local_index_search/msmarco_health/sparse/test.parquet")))
     parser.add_argument("--model_name", type=str, default="Qwen-inst-msmarco_health")
     parser.add_argument("--save_dir", type=str, default="results")
     parser.add_argument("--batch_size", type=int, default=64)

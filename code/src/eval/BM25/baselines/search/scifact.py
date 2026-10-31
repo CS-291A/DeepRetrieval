@@ -9,6 +9,7 @@ import argparse
 
 from src.Lucene.scifact.search import PyseriniMultiFieldSearch
 from src.Lucene.utils import ndcg_at_k
+from verl.utils.paths import data_path
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -24,7 +25,7 @@ if __name__ == '__main__':
     # res_path = '../results/no_reason/claude-haiku_post_scifact.json'
     res_path = '../results/claude-haiku_post_scifact.json'
     
-    search_system = PyseriniMultiFieldSearch(index_dir=f"data/local_index_search/{args.dataset}/pyserini_index")
+    search_system = PyseriniMultiFieldSearch(index_dir=str(data_path(f"local_index_search/{args.dataset}/pyserini_index")))
 
     with open(res_path, "r", encoding="utf-8") as file:
         qrel_test = json.load(file)

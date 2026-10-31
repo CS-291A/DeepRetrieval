@@ -63,6 +63,47 @@ def test_reward_manager_without_key_file_warns(monkeypatch, tmp_path, caplog):
     assert "missing.key" in caplog.text
 
 
+def test_reward_manager_prefers_the_pubmed_key_env_var(monkeypatch, tmp_path):
+    key_file = tmp_path / "pubmed_api.key"
+    key_file.write_text("file-key\n")
+    monkeypatch.setattr(main_ppo, "PUBMED_API_KEY_PATH", str(key_file))
+    monkeypatch.setenv("PUBMED_API_KEY", "env-key")
+
+    manager = main_ppo.RewardManager(tokenizer=None, num_examine=0)
+
+    assert manager.pubmed_api is not None
+    assert manager.pubmed_api.api_key == "env-key"
+
+
+def test_reward_manager_reads_the_pubmed_key_env_var_without_a_key_file(monkeypatch, tmp_path):
+    monkeypatch.setattr(main_ppo, "PUBMED_API_KEY_PATH", str(tmp_path / "missing.key"))
+    monkeypatch.setenv("PUBMED_API_KEY", "env-key")
+
+    manager = main_ppo.RewardManager(tokenizer=None, num_examine=0)
+
+    assert manager.pubmed_api is not None
+    assert manager.pubmed_api.api_key == "env-key"
+
+
+def test_keyless_warning_names_the_env_var(monkeypatch, tmp_path, caplog):
+    monkeypatch.setattr(main_ppo, "PUBMED_API_KEY_PATH", str(tmp_path / "missing.key"))
+
+    with caplog.at_level(logging.WARNING, logger=main_ppo.__name__):
+        main_ppo.RewardManager(tokenizer=None, num_examine=0)
+
+    assert "PUBMED_API_KEY" in caplog.text
+
+
+def test_reward_manager_never_logs_the_pubmed_key(monkeypatch, tmp_path, caplog):
+    monkeypatch.setattr(main_ppo, "PUBMED_API_KEY_PATH", str(tmp_path / "missing.key"))
+    monkeypatch.setenv("PUBMED_API_KEY", "env-key-do-not-log")
+
+    with caplog.at_level(logging.DEBUG):
+        main_ppo.RewardManager(tokenizer=None, num_examine=0)
+
+    assert "env-key-do-not-log" not in caplog.text
+
+
 class _FakeRemoteTask:
     def __init__(self):
         self.configs = []
@@ -157,6 +198,17 @@ def test_main_configures_logging_before_starting_ray(monkeypatch):
     main_ppo.main.__wrapped__(_config(n_gpus_per_node=1, nnodes=1))
 
     assert events == ["configure_logging", "ray.init"]
+
+
+def test_main_checks_the_triton_toolchain_before_starting_ray(monkeypatch):
+    events = []
+    _patch_ray(monkeypatch, {"GPU": 1.0})
+    monkeypatch.setattr(main_ppo.ray, "init", lambda **kwargs: events.append("ray.init"))
+    monkeypatch.setattr(main_ppo, "require_triton_toolchain", lambda: events.append("require_triton_toolchain"))
+
+    main_ppo.main.__wrapped__(_config(n_gpus_per_node=1, nnodes=1))
+
+    assert events == ["require_triton_toolchain", "ray.init"]
 
 
 def test_main_task_configures_logging_in_the_ray_worker_first(monkeypatch):

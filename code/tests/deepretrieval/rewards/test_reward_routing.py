@@ -10,6 +10,7 @@ package, so both `from pkg import mod` and `importlib.import_module` resolve to 
 """
 import sys
 import types
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -30,7 +31,7 @@ DENSE_MODULES = ("scifact", "nfcorpus", "hotpotqa", "fever", "msmarco_beir")
 
 GROUND_TRUTH = {"target": ["doc-1"]}
 PUB_DATE = "2020/01/01"
-DB_PATH = "/data/sql/db.sqlite"
+DB_PATH = str(Path(__file__).resolve())  # any existing absolute file: sql_kwargs rejects a missing database
 DECODED = "<decoded prompt and response>"
 
 # data_source -> (module that must score it, kind of extra kwargs it must receive)

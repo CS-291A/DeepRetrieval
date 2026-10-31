@@ -2,11 +2,12 @@
 
 Every sparse/dense reward module imports pyserini (which starts a JVM at import time) or a
 `src/{Lucene,Dense}/<task>/search.py` wrapper around it. `load_reward_module` replaces those
-with inert stubs in `sys.modules`, runs the import from an empty cwd (so the module-level
-`os.path.exists("data/...")` index checks see nothing), and removes everything afterwards.
+with inert stubs in `sys.modules`, runs the import from an empty cwd with DEEPRETRIEVAL_DATA_DIR
+pointing at an empty directory (so the module-level index checks see nothing), and removes everything afterwards.
 Tests then inject their own fake search backend with `monkeypatch.setattr`.
 """
 import importlib
+import os
 import sys
 import types
 
@@ -54,10 +55,19 @@ _STUB_MODULES = {
 def load_reward_module(monkeypatch, tmp_path, request):
     """Return a function that freshly imports a reward module against stubbed retrieval backends."""
 
-    def load(module_name):
+    def load(module_name, search_backend=UnavailableBackend, isolate_data_dir=True):
+        """`search_backend` replaces the src/{Lucene,Dense} search classes (default: fail if reached).
+
+        Unless the test set DEEPRETRIEVAL_DATA_DIR itself, it points at an empty directory so a
+        developer's real `code/data` indexes are never opened (`isolate_data_dir=False` keeps the default).
+        """
+        if isolate_data_dir and "DEEPRETRIEVAL_DATA_DIR" not in os.environ:
+            monkeypatch.setenv("DEEPRETRIEVAL_DATA_DIR", str(tmp_path / "no-data"))
         for stub_name, attributes in _STUB_MODULES.items():
             stub = types.ModuleType(stub_name)
             for attribute, value in attributes.items():
+                if stub_name.startswith("src.") and value is UnavailableBackend:
+                    value = search_backend
                 setattr(stub, attribute, value)
             monkeypatch.setitem(sys.modules, stub_name, stub)
         monkeypatch.chdir(tmp_path)

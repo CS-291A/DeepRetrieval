@@ -20,8 +20,10 @@ import torch
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from verl.utils import credentials
 from verl.utils.apis.ctgov import CTGovAPI
 from verl.utils.apis.pubmed import PubmedAPI
+from verl.utils.paths import data_path
 
 # Add these at the top with other global variables
 _request_times = deque(maxlen=20)  # Track last 20 requests
@@ -174,7 +176,7 @@ def evaluate_model(model, tokenizer, data_path, device, model_name, save_dir, ba
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_path", type=str, default="/shared/eng/pj20/lmr_model/literature_search_3b/actor/global_step_1200")
-    parser.add_argument("--data_path", type=str, default="data/search_engine/ctgov/test_full.parquet")
+    parser.add_argument("--data_path", type=str, default=str(data_path("search_engine/ctgov/test_full.parquet")))
     parser.add_argument("--model_name", type=str, default="matching-qwen2.5-3b-inst-ppo-2gpus")
     parser.add_argument("--save_dir", type=str, default="results")
     parser.add_argument("--batch_size", type=int, default=8)
@@ -182,11 +184,11 @@ def main():
     args = parser.parse_args()
 
     if args.api == "pubmed":
-        if os.path.exists('verl/utils/reward_score/apis/pubmed_api.key'):
-            api_key = open('verl/utils/reward_score/apis/pubmed_api.key', 'r').read().strip()
-            search_api = PubmedAPI(api_key=api_key)
-        else:
-            raise FileNotFoundError(f"PubMed API key not found: {os.path.abspath('verl/utils/reward_score/apis/pubmed_api.key')}")
+        api_key = credentials.load_pubmed_api_key()
+        if api_key is None:
+            raise FileNotFoundError(f"PubMed API key not found: set ${credentials.PUBMED_API_KEY_ENV} "
+                                    f"or create {credentials.DEFAULT_PUBMED_API_KEY_PATH}")
+        search_api = PubmedAPI(api_key=api_key)
     elif args.api == "ctgov":
         search_api = CTGovAPI()
     else:

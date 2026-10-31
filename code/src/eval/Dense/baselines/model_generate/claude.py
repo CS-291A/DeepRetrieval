@@ -12,12 +12,13 @@ tqdm.pandas()
 sys.path.append('./')
 
 from src.utils.claude_aws import chat_sonnet
+from verl.utils.paths import data_path
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_name', type=str, default='claude-3.5', choices=['claude-3.5'])
     parser.add_argument('--save_dir', type=str, default='../results_dense')
-    parser.add_argument("--data_path", type=str, default="data/local_index_search/scifact/dense/test.parquet")
+    parser.add_argument("--data_path", type=str, default=str(data_path("local_index_search/scifact/dense/test.parquet")))
     parser.add_argument('--dataset', type=str, default='scifact')
     args = parser.parse_args()
     

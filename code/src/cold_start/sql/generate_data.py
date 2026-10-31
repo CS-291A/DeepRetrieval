@@ -7,6 +7,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from src.utils.gpt_azure import gpt_chat_4o
+from verl.utils.paths import data_path
 
 dataset = 'bird'
 # dataset = 'spider'
@@ -16,7 +17,7 @@ dataset = 'bird'
 MAX_WORKERS = 5
 
 
-rl_data_parquet_path = f'data/sql/{dataset}/train.parquet'
+rl_data_parquet_path = str(data_path(f'sql/{dataset}/train.parquet'))
 
 
 
@@ -25,7 +26,7 @@ rl_data = [df.iloc[i] for i in range(len(df))]
 
 print(len(rl_data))
 
-sft_data_path = f'data/sql/cold_start/{dataset}_reason_sft_train-.jsonl'
+sft_data_path = str(data_path(f'sql/cold_start/{dataset}_reason_sft_train-.jsonl'))
 
 if os.path.exists(sft_data_path):
     with open(sft_data_path, 'r') as f:

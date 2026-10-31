@@ -7,6 +7,7 @@ from typing import Any, cast
 from datasets import Dataset, concatenate_datasets
 
 from verl.utils.hdfs_io import copy, makedirs
+from verl.utils.paths import data_path
 
 INSTRUCTION = """
 You are an expert in query generation. Given a question, your task is to create query terms to retrieve relevant documents that best answer the question."""
@@ -57,17 +58,17 @@ def parse_qrel(qrel):
 
 def load_matching_dataset():
     # code/data/raw_data/nfcorpus/qrels/*.tsv
-    with open("code/data/raw_data/nfcorpus/qrels/train.tsv", "r", encoding="utf-8") as file:
+    with open(str(data_path("raw_data/nfcorpus/qrels/train.tsv")), "r", encoding="utf-8") as file:
         qrel_train = [line.strip().split("\t") for line in file]
     
     qrel_train = qrel_train[1:]  # remove the header
     
-    with open("code/data/raw_data/nfcorpus/qrels/test.tsv", "r", encoding="utf-8") as file:
+    with open(str(data_path("raw_data/nfcorpus/qrels/test.tsv")), "r", encoding="utf-8") as file:
         qrel_test = [line.strip().split("\t") for line in file]
 
     qrel_test = qrel_test[1:]  # remove the header
 
-    with open("code/data/raw_data/nfcorpus/qrels/dev.tsv", "r", encoding="utf-8") as file:
+    with open(str(data_path("raw_data/nfcorpus/qrels/dev.tsv")), "r", encoding="utf-8") as file:
         qrel_val = [line.strip().split("\t") for line in file]
 
     qrel_val = qrel_val[1:]  # remove the header
@@ -78,7 +79,7 @@ def load_matching_dataset():
 
 
     # read code/data/raw_data/nfcorpus/queries.jsonl
-    with open("code/data/raw_data/nfcorpus/queries.jsonl", "r", encoding="utf-8") as file:
+    with open(str(data_path("raw_data/nfcorpus/queries.jsonl")), "r", encoding="utf-8") as file:
         queries = [json.loads(line) for line in file]
 
     # transform the queries into a dictionary
@@ -105,7 +106,7 @@ def load_matching_dataset():
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--local_dir', default='code/data/local_index_search')
+    parser.add_argument('--local_dir', default=str(data_path('local_index_search')))
     parser.add_argument('--hdfs_dir', default=None)
     parser.add_argument('--dataset', type=str, default='nfcorpus')
 

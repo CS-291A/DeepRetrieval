@@ -6,6 +6,7 @@ from datetime import datetime
 
 from tqdm import tqdm
 
+from verl.utils import credentials
 from verl.utils.apis.ctgov import CTGovAPI
 from verl.utils.apis.pubmed import PubmedAPI
 
@@ -104,11 +105,10 @@ def get_pub_date(data, output_file, checkpoint_file, pubmed_api):
 
 if __name__ == '__main__':
     # Initialize APIs
-    api_key = None
-    if os.path.exists('verl/utils/reward_score/apis/pubmed_api.key'):
-        api_key = open('verl/utils/reward_score/apis/pubmed_api.key', 'r').read().strip()
-    else:
-        print("Warning: verl/utils/reward_score/apis/pubmed_api.key not found; using the keyless, rate-limited PubMed client")
+    api_key = credentials.load_pubmed_api_key()
+    if api_key is None:
+        print(f"Warning: no PubMed API key (${credentials.PUBMED_API_KEY_ENV} unset, "
+              f"{credentials.DEFAULT_PUBMED_API_KEY_PATH} not found); using the keyless, rate-limited PubMed client")
     pubmed_api = PubmedAPI(api_key=api_key)
     ctgov_api = CTGovAPI()
 

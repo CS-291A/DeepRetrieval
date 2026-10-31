@@ -5,6 +5,8 @@ import random
 import re
 import sys
 
+from verl.utils.paths import DATA_DIR_ENV, data_path
+
 logger = logging.getLogger(__name__)
 
 sys.path.append('./')
@@ -13,11 +15,12 @@ sys.path.append('./')
 from src.Dense.msmarco_beir.search import PyseriniFaissSearcher
 from src.Lucene.utils import ndcg_at_k
 
-index_dir = 'data/local_index_search/msmarco_beir/dense_index/faiss-flat.msmarco-v1-passage.bge-base-en-v1.5.20240107'
+index_dir = str(data_path('local_index_search/msmarco_beir/dense_index/faiss-flat.msmarco-v1-passage.bge-base-en-v1.5.20240107'))
 model_path = "BAAI/bge-base-en-v1.5"
 
 if not os.path.exists(index_dir):
-    logger.warning('Pyserini index not found for msmarco_beir')
+    logger.warning('Faiss index not found for %s at %s (data dir: $%s, default <code>/data)',
+                   'msmarco_beir', index_dir, DATA_DIR_ENV)
     search_system = None
 else:
     search_system = PyseriniFaissSearcher(index_dir, model_path)

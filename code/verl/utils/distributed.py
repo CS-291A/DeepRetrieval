@@ -14,6 +14,8 @@
 """Utilities for distributed training."""
 import os
 
+from verl.utils.toolchain import require_triton_toolchain
+
 
 def require_cuda(component: str) -> None:
     """Fail fast with a readable error where NCCL/CUDA-only code would otherwise fail obscurely."""
@@ -21,6 +23,8 @@ def require_cuda(component: str) -> None:
     if not torch.cuda.is_available():
         raise RuntimeError(f'{component} requires a CUDA GPU (it uses NCCL and CUDA kernels); '
                            'no CUDA device is available on this machine')
+    # CUDA processes JIT-compile Triton kernels (flash-attn cross-entropy) on first use.
+    require_triton_toolchain()
 
 
 def initialize_global_process_group(timeout_second=36000):

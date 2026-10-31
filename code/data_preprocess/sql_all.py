@@ -4,6 +4,8 @@ import random
 
 import pandas as pd
 
+from verl.utils.paths import data_path
+
 datasets = ['bird', 'spider']
 splits = ['train', 'test']
 
@@ -11,14 +13,14 @@ splits = ['train', 'test']
 seed = 42
 random.seed(seed)
 
-if not os.path.exists('data/sql/sql_all'):
-    os.makedirs('data/sql/sql_all')
+if not os.path.exists(str(data_path('sql/sql_all'))):
+    os.makedirs(str(data_path('sql/sql_all')))
 
 for split in splits:
     merged_df = pd.DataFrame()
     
     for dataset in datasets:
-        path = f'data/sql/{dataset}/{split}.parquet'
+        path = str(data_path(f'sql/{dataset}/{split}.parquet'))
         df = pd.read_parquet(path)
         # print(f"dataset: {dataset}, split: {split}, Loaded {len(df)} rows")
         
@@ -27,6 +29,6 @@ for split in splits:
     if split == 'train':
         merged_df = merged_df.sample(frac=1, random_state=seed).reset_index(drop=True)
     
-    merged_path = f'data/sql/sql_all/{split}.parquet'
+    merged_path = str(data_path(f'sql/sql_all/{split}.parquet'))
     merged_df.to_parquet(merged_path)
     print(f"Merged dataset saved at {merged_path} with {len(merged_df)} rows")

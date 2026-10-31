@@ -5,6 +5,8 @@ import random
 import re
 import sys
 
+from verl.utils.paths import DATA_DIR_ENV, data_path
+
 logger = logging.getLogger(__name__)
 
 sys.path.append('./')
@@ -12,12 +14,13 @@ sys.path.append('./')
 from src.Dense.scifact.search import FaissHNSWSearcher
 from src.Lucene.utils import ndcg_at_k
 
-if not os.path.exists("data/local_index_search/scifact/dense_index"):
-    logger.warning('Faiss index not found for scifact')
+output_dir = str(data_path("local_index_search/scifact/dense_index"))
+if not os.path.exists(output_dir):
+    logger.warning('Faiss index not found for %s at %s (data dir: $%s, default <code>/data)',
+                   'scifact', output_dir, DATA_DIR_ENV)
     search_system = None
 else:
     model_path = "intfloat/multilingual-e5-large-instruct"
-    output_dir = "data/local_index_search/scifact/dense_index"
     index_path = f"{output_dir}/faiss_hnsw_index.bin"
     doc_ids_path = f"{output_dir}/doc_ids.npy"
     

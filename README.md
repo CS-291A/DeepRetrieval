@@ -55,6 +55,7 @@ The system works by having an LLM generate reasoning steps in a `<think>` sectio
 - [⚡️ Easy-to-use API for Query Rewriting](#️-easy-to-use-api-for-query-rewriting)
 - [🫧 Get Started](#-get-started)
 - [🏃 Run Training](#-run-training)
+- [☁️ Running on Runpod](#️-running-on-runpod)
 - [🧐 Run Evaluation](#-run-evaluation)
 - [📚 Cite DeepRetrieval](#-cite-deepretrieval)
 
@@ -167,6 +168,34 @@ sh scripts/train/pubmed_32.sh
 ```
 (if you see Out-of-vram, try add `critic.model.enable_gradient_checkpointing=True` to the script)
 
+Every launcher under `scripts/train/` and `scripts/eval/` first sources `scripts/common.sh`, which loads `code/.env`, reads datasets from `$DEEPRETRIEVAL_DATA_DIR` (default `code/data`), creates `exp_log/` and changes to `code/`. The launchers no longer set `CUDA_VISIBLE_DEVICES`: all visible GPUs are used unless you export it first (e.g. `CUDA_VISIBLE_DEVICES=0,1 sh scripts/train/pubmed_32.sh`).
+
+## ☁️ Running on Runpod
+
+`code/scripts/setup_pod.sh` prepares a rented pod and keeps everything slow to rebuild on a network volume (repo, venv, uv cache, uv-managed Python, Hugging Face cache, datasets), so a new pod on the same volume is ready in minutes. It is idempotent: rerun it on every new pod.
+
+**Pod settings**
+- GPU: 2× A100 80GB, or another Ampere/Hopper GPU (A40, L40S, H100). Not Blackwell: torch 2.4 has no kernels for it.
+- Template: the official "Runpod Pytorch 2.4.0" image `runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04` (verified in the GPU smoke test).
+- Network volume mounted at `/workspace`; container disk ≥ 80 GB.
+- Optional pod environment variables / Runpod secrets: `PUBMED_API_KEY` (NCBI 10 requests/s instead of 3), `WANDB_API_KEY`, `HF_TOKEN` (needed for gated models such as `meta-llama/Llama-3.2-3B-Instruct`, used by `pubmed_32.sh`).
+
+**On the pod** (first time; on later pods only the `bash` line is needed):
+```bash
+cd /workspace
+git clone https://github.com/objones25/DeepRetrieval.git
+bash DeepRetrieval/code/scripts/setup_pod.sh
+cd DeepRetrieval/code
+sh scripts/train/pubmed_32.sh
+```
+
+`setup_pod.sh` checks `/workspace` is a mount and `nvidia-smi` sees the GPUs, installs uv onto the volume if missing, fast-forwards the checkout (a checkout with uncommitted changes is left alone), writes `code/.env` (mode 600), runs `uv sync --extra gpu --extra retrieval`, downloads `pubmed_32` into `/workspace/data` (skipped when already present), and checks the Triton toolchain and the train/test parquet files. Secrets come from the environment first, then the existing `code/.env`, then a hidden prompt when run in a terminal. Values are never printed. Useful options:
+- `--non-interactive`: never prompt; missing optional secrets are skipped. Add `--require-pubmed-key` to fail instead when `PUBMED_API_KEY` is missing.
+- `--datasets pubmed_32,ctgov_32 --categories search_engine`: download more datasets; `--force` downloads again.
+- `--branch NAME`, `--repo URL`: which code to check out. `--gpus N` sets how many GPUs to expect (default 2). `--dry-run` prints the steps without running them.
+
+Training can outlive your SSH session, so start it inside `tmux` (or `nohup ... &`). Logs go to `code/exp_log/` and checkpoints to `code/checkpoints/`, both on the volume. Without `WANDB_API_KEY`, export `WANDB_MODE=offline` before launching.
+
 ### Think/Query Length During Training (PubMed)
 
 ![alt text](/images/length_study_horizontal.png "think length and query length during training")
@@ -236,10 +265,7 @@ module load cuda/12.6
 source ~/miniconda/etc/profile.d/conda.sh  # adjust path if your conda installation differs
 conda activate zero
 ```
-If you previously specified a device inside your training script or job file (e.g., pubmed_32.sh), remove lines like:
-
-export CUDA_VISIBLE_DEVICES=4,7
-This ensures CUDA is managed correctly by SLURM.
+The launchers in `code/scripts/` no longer set `CUDA_VISIBLE_DEVICES`. If your own job file sets a device (e.g. `export CUDA_VISIBLE_DEVICES=4,7`), remove that line so SLURM manages CUDA correctly.
 
 ### ⚙️ Dependency Conflicts
 The pip/conda dependency conflicts previously documented here (missing `pyparsing`/`decorator`/`bitsandbytes`, and `numpy>=2` breaking vllm 0.6.3 / outlines 0.0.46) do not arise with the uv setup: `code/uv.lock` resolves one consistent set with `numpy<2`, `transformers<4.48` and `vllm==0.6.3`. If you still install with pip, pin those three versions.

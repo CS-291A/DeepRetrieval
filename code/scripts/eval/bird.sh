@@ -1,5 +1,7 @@
-export CUDA_VISIBLE_DEVICES=1
-
+#!/bin/sh
+# common.sh: loads code/.env, defaults DEEPRETRIEVAL_DATA_DIR, creates exp_log/, cd code/.
+# GPUs: all visible ones are used; export CUDA_VISIBLE_DEVICES first to restrict them.
+. "$(dirname "$0")/../common.sh" || exit 1
 
 # MODEL_PATH=/dev/ana/sft_training_outputs/bird_wo_reasoning/checkpoint-6342
 # MODEL_PATH=/dev/ana/sft_training_outputs/bird_wo_reasoning/checkpoint-8456
@@ -15,7 +17,7 @@ MODEL_PATH=/dev/ana/sft_qwen_7/bird_wo_reasoning/checkpoint-4226
 
 python src/eval/SQL/bird.py \
     --model_path $MODEL_PATH \
-    --data_path data/sql/bird/test.parquet \
+    --data_path "$DEEPRETRIEVAL_DATA_DIR"/sql/bird/test.parquet \
     --model_name bird-3b-sft-full \
     --save_dir ../results \
     --with_reasoning false \

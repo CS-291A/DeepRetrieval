@@ -3,6 +3,8 @@ import time
 
 from pyserini.search.lucene import LuceneSearcher
 
+from verl.utils.paths import data_path
+
 
 class PyseriniMultiFieldSearch:
     def __init__(self, index_dir="pyserini_index"):
@@ -46,7 +48,7 @@ class PyseriniMultiFieldSearch:
 
 # Example Usage
 if __name__ == "__main__":
-    search_system = PyseriniMultiFieldSearch(index_dir='code/data/local_index_search/scifact/pyserini_index')
+    search_system = PyseriniMultiFieldSearch(index_dir=str(data_path('local_index_search/scifact/pyserini_index')))
     
     queries = [
         "Organic Skin Care",

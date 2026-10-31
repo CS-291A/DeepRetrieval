@@ -20,6 +20,9 @@ import os
 import sys
 from collections.abc import Callable
 
+# RAY_ENABLE_UV_RUN_RUNTIME_ENV defaults to "0" in verl/__init__.py: the package is imported (and
+# imports ray) before this module body runs, so setting it here would be too late.
+
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(os.path.dirname(current_dir))  
 sys.path.insert(0, project_root)  
@@ -36,11 +39,13 @@ from verl.trainer import reward_registry
 from verl.trainer.ppo.ray_trainer import RayPPOTrainer
 from verl.utils.apis.ctgov import CTGovAPI
 from verl.utils.apis.pubmed import PubmedAPI
+from verl.utils.credentials import PUBMED_API_KEY_ENV, load_pubmed_api_key
 from verl.utils.logging_utils import configure_logging
+from verl.utils.toolchain import require_triton_toolchain
 
 logger = logging.getLogger(__name__)
 
-# README: put the NCBI key at code/verl/utils/reward_score/apis/pubmed_api.key (resolved here, not from the cwd)
+# The NCBI key comes from $PUBMED_API_KEY (code/.env); this key file (resolved here, not from the cwd) is the fallback.
 PUBMED_API_KEY_PATH = os.path.join(project_root, 'verl', 'utils', 'reward_score', 'apis', 'pubmed_api.key')
     
 def _select_rm_score_fn(data_source) -> Callable:
@@ -59,13 +64,10 @@ class RewardManager:
         # Initialize APIs globally
         self.pubmed_api = None
         self.ctgov_api = None
-        api_key = None
-        if os.path.exists(PUBMED_API_KEY_PATH):
-            with open(PUBMED_API_KEY_PATH, 'r') as f:
-                api_key = f.read().strip()
-        else:
-            logger.warning('PubMed API key not found at %s; using keyless PubMed requests '
-                           '(NCBI allows 3 req/s without a key instead of 10).', PUBMED_API_KEY_PATH)
+        api_key = load_pubmed_api_key(PUBMED_API_KEY_PATH)
+        if api_key is None:
+            logger.warning('No PubMed API key ($%s unset, no key at %s); using keyless PubMed requests '
+                           '(NCBI allows 3 req/s without a key instead of 10).', PUBMED_API_KEY_ENV, PUBMED_API_KEY_PATH)
         self.pubmed_api = PubmedAPI(api_key=api_key)
         self.ctgov_api = CTGovAPI()
         
@@ -129,6 +131,8 @@ import ray
 @hydra.main(config_path='config', config_name='ppo_trainer', version_base=None)
 def main(config):
     configure_logging()
+    # Fail in the first second, not inside step 1: Triton JIT (flash-attn kernels) needs a C compiler and Python.h.
+    require_triton_toolchain()
     if not ray.is_initialized():
         # this is for local ray cluster
         ray.init(runtime_env={'env_vars': {'TOKENIZERS_PARALLELISM': 'true', 'NCCL_DEBUG': 'WARN'}})
